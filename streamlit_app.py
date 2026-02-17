@@ -452,7 +452,7 @@ if page == "📊 Dashboard":
             quick_categories = get_categories()
             quick_category = st.selectbox("Category", quick_categories['id'], format_func=lambda x: quick_categories[quick_categories['id'] == x]['icon'].values[0] + " " + quick_categories[quick_categories['id'] == x]['name'].values[0], key="quick_category", label_visibility="collapsed")
         with col3:
-            quick_type = st.selectbox("Type", ["expense", "income"], format_func=lambda x: "💸" if x == "expense" else "💵", key="quick_type", label_visibility="collapsed")
+            quick_type = st.selectbox("Type", ["expense", "income"], format_func=lambda x: "💸 Expense" if x == "expense" else "💵 Income", key="quick_type", label_visibility="visible")
         with col4:
             quick_submit = st.button("➕ Add", key="quick_add_btn", use_container_width=True)
         
