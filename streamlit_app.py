@@ -7,9 +7,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import os
 from pathlib import Path
+import sqlite3
 
 # Configure page - collapsed sidebar by default for mobile friendliness
 st.set_page_config(
@@ -121,6 +122,29 @@ st.markdown("""
         div[data-testid="stMetricLabel"] {
             font-size: 0.8rem !important;
         }
+        /* Mobile form improvements - stack properly and larger touch targets */
+        .stForm > div[data-testid="stFormRow"] {
+            flex-direction: column !important;
+            gap: 0.75rem !important;
+        }
+        .stButton > button {
+            min-height: 48px !important;
+            font-size: 1rem !important;
+            width: 100% !important;
+            margin-top: 0.5rem !important;
+        }
+    }
+    /* Quick Add section styling */
+    .quick-add-header {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    /* Delete confirmation modal */
+    .delete-confirm {
+        background-color: #262730;
+        padding: 20px;
+        border-radius: 10px;
+        border: 1px solid #f87171;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -201,6 +225,15 @@ def get_db_connection():
     import sqlite3
     return sqlite3.connect(DB_PATH)
 
+def clear_cache():
+    """Clear all cached data after modifications"""
+    get_categories.clear()
+    get_transactions.clear()
+    get_recurring_bills.clear()
+    get_savings_goals.clear()
+    get_monthly_summary.clear()
+    get_category_breakdown.clear()
+
 # Initialize database
 if not DB_PATH.exists():
     init_db()
@@ -208,6 +241,7 @@ else:
     init_db()
 
 # Helper functions
+@st.cache_data(ttl=60)
 def get_categories(transaction_type=None):
     """Get categories from database"""
     conn = get_db_connection()
@@ -221,6 +255,7 @@ def get_categories(transaction_type=None):
     conn.close()
     return df
 
+@st.cache_data(ttl=60)
 def get_transactions(limit=100):
     """Get transactions from database"""
     conn = get_db_connection()
@@ -244,7 +279,9 @@ def add_transaction(date_val, amount, category_id, transaction_type, notes):
               (date_val, amount, category_id, transaction_type, notes))
     conn.commit()
     conn.close()
+    clear_cache()
 
+@st.cache_data(ttl=60)
 def get_recurring_bills():
     """Get recurring bills"""
     conn = get_db_connection()
@@ -266,6 +303,7 @@ def add_recurring_bill(name, amount, due_day, category_id):
                  VALUES (?, ?, ?, ?)""", (name, amount, due_day, category_id))
     conn.commit()
     conn.close()
+    clear_cache()
 
 def delete_transaction(tx_id):
     """Delete a transaction"""
@@ -274,7 +312,9 @@ def delete_transaction(tx_id):
     c.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
     conn.commit()
     conn.close()
+    clear_cache()
 
+@st.cache_data(ttl=60)
 def get_monthly_summary(year=None, month=None):
     """Get monthly income/expense summary"""
     conn = get_db_connection()
@@ -293,6 +333,7 @@ def get_monthly_summary(year=None, month=None):
     conn.close()
     return df
 
+@st.cache_data(ttl=60)
 def get_category_breakdown(transaction_type='expense', year=None, month=None):
     """Get spending by category"""
     conn = get_db_connection()
@@ -312,6 +353,7 @@ def get_category_breakdown(transaction_type='expense', year=None, month=None):
     conn.close()
     return df
 
+@st.cache_data(ttl=60)
 def get_savings_goals():
     """Get all savings goals"""
     conn = get_db_connection()
@@ -331,6 +373,7 @@ def add_savings_goal(name, target_amount, deadline=None):
                  VALUES (?, ?, ?)""", (name, target_amount, deadline_val))
     conn.commit()
     conn.close()
+    clear_cache()
 
 def update_savings_goal_amount(goal_id, amount_to_add):
     """Add to a savings goal's current amount"""
@@ -340,6 +383,7 @@ def update_savings_goal_amount(goal_id, amount_to_add):
               (amount_to_add, goal_id))
     conn.commit()
     conn.close()
+    clear_cache()
 
 def delete_savings_goal(goal_id):
     """Delete a savings goal"""
@@ -348,6 +392,7 @@ def delete_savings_goal(goal_id):
     c.execute("DELETE FROM savings_goals WHERE id = ?", (goal_id,))
     conn.commit()
     conn.close()
+    clear_cache()
 
 def toggle_savings_goal(goal_id):
     """Toggle a savings goal active status"""
@@ -357,6 +402,7 @@ def toggle_savings_goal(goal_id):
               (goal_id,))
     conn.commit()
     conn.close()
+    clear_cache()
 
 # Navigation - top for mobile, sidebar for desktop
 pages = ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "🎯 Savings Goals", "📁 Import CSV", "📈 Reports"]
@@ -385,6 +431,51 @@ current_month = today.month
 # Page: Dashboard
 if page == "📊 Dashboard":
     st.title("📊 Dashboard")
+    
+    # Check for empty state - onboarding
+    transactions_check = get_transactions(1)
+    is_empty = transactions_check.empty
+    
+    # Quick Add Section (expandable)
+    with st.expander("⚡ Quick Add Transaction", expanded=not is_empty):
+        with st.form("quick_add_form"):
+            col1, col2, col3, col4 = st.columns([2, 2, 1.5, 1.5], gap="small")
+            
+            with col1:
+                quick_amount = st.number_input("Amount", min_value=0.01, step=0.01, format="%.2f", key="quick_amount", label_visibility="collapsed", placeholder="0.00")
+            with col2:
+                quick_categories = get_categories()
+                quick_category = st.selectbox("Category", quick_categories['id'], format_func=lambda x: quick_categories[quick_categories['id'] == x]['icon'].values[0] + " " + quick_categories[quick_categories['id'] == x]['name'].values[0], key="quick_category", label_visibility="collapsed")
+            with col3:
+                quick_type = st.selectbox("Type", ["expense", "income"], format_func=lambda x: "💸" if x == "expense" else "💵", key="quick_type", label_visibility="collapsed")
+            with col4:
+                quick_submit = st.form_submit_button("➕ Add", use_container_width=True)
+            
+            quick_note = st.text_input("Note (optional)", key="quick_note", placeholder="Add a note...")
+            
+            if quick_submit:
+                if quick_amount > 0:
+                    add_transaction(today, quick_amount, quick_category, quick_type, quick_note)
+                    st.success(f"✅ Added: {quick_type} - ${quick_amount:,.2f}")
+                    st.rerun()
+                else:
+                    st.error("Please enter an amount")
+    
+    # Onboarding message for empty state
+    if is_empty:
+        st.markdown("""
+        <div style="background-color: #262730; padding: 20px; border-radius: 10px; text-align: center; margin-bottom: 20px;">
+            <h2 style="color: #4ade80; margin-bottom: 10px;">🎉 Welcome to Jim's Finance Tracker!</h2>
+            <p style="color: #fafafa; margin-bottom: 15px;">Get started in just a few steps:</p>
+            <ol style="color: #fafafa; text-align: left; max-width: 400px; margin: 0 auto;">
+                <li style="margin-bottom: 8px;">Use <strong>Quick Add</strong> above to add your first transaction</li>
+                <li style="margin-bottom: 8px;">Set up recurring bills in <strong>Recurring Bills</strong></li>
+                <li style="margin-bottom: 8px;">Create savings goals in <strong>Savings Goals</strong></li>
+                <li style="margin-bottom: 8px;">Import your bank transactions via <strong>Import CSV</strong></li>
+            </ol>
+            <p style="color: #4ade80; margin-top: 15px; font-weight: bold;">Add your first transaction above to get started!</p>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Monthly summary
     col1, col2, col3 = st.columns(3)
@@ -531,9 +622,27 @@ elif page == "📋 Transactions":
                     if row['notes']:
                         st.write(f"**Notes:** {row['notes']}")
                 with col2:
-                    if st.button("🗑️ Delete", key=f"del_{row['id']}"):
-                        delete_transaction(row['id'])
-                        st.rerun()
+                    # Delete confirmation
+                    confirm_key = f"confirm_del_{row['id']}"
+                    if confirm_key not in st.session_state:
+                        st.session_state[confirm_key] = False
+                    
+                    if not st.session_state[confirm_key]:
+                        if st.button("🗑️ Delete", key=f"del_{row['id']}"):
+                            st.session_state[confirm_key] = True
+                            st.rerun()
+                    else:
+                        st.warning("Confirm?")
+                        col_confirm1, col_confirm2 = st.columns(2)
+                        with col_confirm1:
+                            if st.button("✅ Yes", key=f"yes_{row['id']}"):
+                                delete_transaction(row['id'])
+                                st.session_state[confirm_key] = False
+                                st.rerun()
+                        with col_confirm2:
+                            if st.button("❌ No", key=f"no_{row['id']}"):
+                                st.session_state[confirm_key] = False
+                                st.rerun()
     else:
         st.info("No transactions yet. Add one to get started!")
 
@@ -656,9 +765,26 @@ elif page == "🎯 Savings Goals":
                             toggle_savings_goal(goal['id'])
                             st.rerun()
                     with col_btn2:
-                        if st.button("🗑️", key=f"del_goal_{goal['id']}", help="Delete"):
-                            delete_savings_goal(goal['id'])
-                            st.rerun()
+                        # Delete confirmation
+                        confirm_key = f"confirm_goal_{goal['id']}"
+                        if confirm_key not in st.session_state:
+                            st.session_state[confirm_key] = False
+                        
+                        if not st.session_state[confirm_key]:
+                            if st.button("🗑️", key=f"del_goal_{goal['id']}", help="Delete"):
+                                st.session_state[confirm_key] = True
+                                st.rerun()
+                        else:
+                            col_confirm1, col_confirm2 = st.columns(2)
+                            with col_confirm1:
+                                if st.button("✅", key=f"yes_goal_{goal['id']}"):
+                                    delete_savings_goal(goal['id'])
+                                    st.session_state[confirm_key] = False
+                                    st.rerun()
+                            with col_confirm2:
+                                if st.button("❌", key=f"no_goal_{goal['id']}"):
+                                    st.session_state[confirm_key] = False
+                                    st.rerun()
                 
                 st.markdown("---")
     else:
