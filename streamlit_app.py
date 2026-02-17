@@ -165,6 +165,16 @@ def init_db():
         FOREIGN KEY (category_id) REFERENCES categories(id)
     )''')
     
+    # Savings goals table
+    c.execute('''CREATE TABLE IF NOT EXISTS savings_goals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        target_amount REAL NOT NULL,
+        current_amount REAL DEFAULT 0,
+        deadline TEXT,
+        is_active INTEGER DEFAULT 1
+    )''')
+    
     # Insert default categories if empty
     c.execute("SELECT COUNT(*) FROM categories")
     if c.fetchone()[0] == 0:
@@ -302,8 +312,54 @@ def get_category_breakdown(transaction_type='expense', year=None, month=None):
     conn.close()
     return df
 
+def get_savings_goals():
+    """Get all savings goals"""
+    conn = get_db_connection()
+    df = pd.read_sql("""
+        SELECT * FROM savings_goals
+        ORDER BY is_active DESC, id DESC
+    """, conn)
+    conn.close()
+    return df
+
+def add_savings_goal(name, target_amount, deadline=None):
+    """Add a new savings goal"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    deadline_val = deadline.strftime('%Y-%m-%d') if deadline else None
+    c.execute("""INSERT INTO savings_goals (name, target_amount, deadline) 
+                 VALUES (?, ?, ?)""", (name, target_amount, deadline_val))
+    conn.commit()
+    conn.close()
+
+def update_savings_goal_amount(goal_id, amount_to_add):
+    """Add to a savings goal's current amount"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE savings_goals SET current_amount = current_amount + ? WHERE id = ?", 
+              (amount_to_add, goal_id))
+    conn.commit()
+    conn.close()
+
+def delete_savings_goal(goal_id):
+    """Delete a savings goal"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM savings_goals WHERE id = ?", (goal_id,))
+    conn.commit()
+    conn.close()
+
+def toggle_savings_goal(goal_id):
+    """Toggle a savings goal active status"""
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("UPDATE savings_goals SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", 
+              (goal_id,))
+    conn.commit()
+    conn.close()
+
 # Navigation - top for mobile, sidebar for desktop
-pages = ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "📁 Import CSV", "📈 Reports"]
+pages = ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "🎯 Savings Goals", "📁 Import CSV", "📈 Reports"]
 
 # Use tabs for mobile-friendly navigation
 st.title("💰 Jim's Finance Tracker")
@@ -519,6 +575,94 @@ elif page == "🔄 Recurring Bills":
                 st.write(f"**Category:** {bill['category_icon']} {bill['category']}")
     else:
         st.info("No recurring bills. Add one above!")
+
+# Page: Savings Goals
+elif page == "🎯 Savings Goals":
+    st.title("🎯 Savings Goals")
+    
+    # Add new goal
+    with st.expander("➕ Add New Savings Goal"):
+        with st.form("add_goal_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                goal_name = st.text_input("Goal Name", placeholder="e.g., Emergency Fund")
+                target_amount = st.number_input("Target Amount", min_value=1.0, step=1.0, format="%.2f")
+            with col2:
+                deadline = st.date_input("Deadline (optional)", value=None)
+            
+            submitted = st.form_submit_button("Create Goal")
+            
+            if submitted:
+                if goal_name and target_amount > 0:
+                    add_savings_goal(goal_name, target_amount, deadline if deadline else None)
+                    st.success(f"Goal '{goal_name}' created with target of ${target_amount:,.2f}!")
+                    st.rerun()
+                else:
+                    st.error("Please enter a goal name and target amount")
+    
+    # Display goals
+    goals = get_savings_goals()
+    
+    if not goals.empty:
+        # Summary cards
+        active_goals = goals[goals['is_active'] == 1]
+        total_saved = active_goals['current_amount'].sum()
+        total_target = active_goals['target_amount'].sum()
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Active Goals", len(active_goals))
+        with col2:
+            st.metric("Total Saved", f"${total_saved:,.2f}")
+        with col3:
+            remaining = max(0, total_target - total_saved)
+            st.metric("Total Remaining", f"${remaining:,.2f}")
+        
+        st.markdown("---")
+        
+        for _, goal in goals.iterrows():
+            progress = min(goal['current_amount'] / goal['target_amount'], 1.0) if goal['target_amount'] > 0 else 0
+            percent = progress * 100
+            remaining_amount = max(0, goal['target_amount'] - goal['current_amount'])
+            
+            status_icon = "✅" if goal['is_active'] else "⏸️"
+            deadline_text = f" (Due: {goal['deadline']})" if goal['deadline'] else ""
+            
+            with st.container():
+                col1, col2 = st.columns([3, 1])
+                
+                with col1:
+                    st.subheader(f"{status_icon} {goal['name']}")
+                    st.progress(progress)
+                    st.write(f"**${goal['current_amount']:,.2f}** / ${goal['target_amount']:,.2f} ({percent:.1f}%)")
+                    if remaining_amount > 0:
+                        st.caption(f"💰 ${remaining_amount:,.2f} remaining{deadline_text}")
+                    else:
+                        st.caption("🎉 Goal reached!")
+                
+                with col2:
+                    # Action buttons
+                    with st.form(f"add_to_goal_{goal['id']}"):
+                        add_amount = st.number_input("Add amount", min_value=0.01, step=1.0, format="%.2f", key=f"amount_{goal['id']}")
+                        if st.form_submit_button("➕ Add", use_container_width=True):
+                            if add_amount > 0:
+                                update_savings_goal_amount(goal['id'], add_amount)
+                                st.success(f"Added ${add_amount:,.2f}!")
+                                st.rerun()
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        if st.button("⏸️", key=f"toggle_{goal['id']}", help="Pause/Resume"):
+                            toggle_savings_goal(goal['id'])
+                            st.rerun()
+                    with col_btn2:
+                        if st.button("🗑️", key=f"del_goal_{goal['id']}", help="Delete"):
+                            delete_savings_goal(goal['id'])
+                            st.rerun()
+                
+                st.markdown("---")
+    else:
+        st.info("No savings goals yet. Create one above to start saving!")
 
 # Page: Import CSV
 elif page == "📁 Import CSV":
