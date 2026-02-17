@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
 import os
 from pathlib import Path
-import sqlite3
+from supabase import create_client, Client
 
 # Configure page - collapsed sidebar by default for mobile friendliness
 st.set_page_config(
@@ -19,6 +19,18 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# Supabase configuration
+SUPABASE_URL = "https://qqwnnvoahcsrffacafig.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxd25udm9haGNzcmZmYWNhZmlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNTMyNjMsImV4cCI6MjA4NjkyOTI2M30.7OfMaGSLbvMNFOoT2fGB1DhiojKWO6R1Uoo1N8PTAIE"
+
+@st.cache_resource
+def get_supabase_client() -> Client:
+    """Create Supabase client"""
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Initialize Supabase client
+supabase = get_supabase_client()
 
 # Password protection
 if 'authenticated' not in st.session_state:
@@ -149,82 +161,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Database setup
-DB_PATH = Path(__file__).parent / "data" / "finance.db"
+# Database is now Supabase - no local initialization needed
+# Tables are created in Supabase Dashboard
 
-def init_db():
-    """Initialize SQLite database with tables"""
-    import sqlite3
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    
-    # Categories table
-    c.execute('''CREATE TABLE IF NOT EXISTS categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        icon TEXT DEFAULT '💰',
-        is_income INTEGER DEFAULT 0
-    )''')
-    
-    # Transactions table
-    c.execute('''CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT NOT NULL,
-        amount REAL NOT NULL,
-        category_id INTEGER,
-        transaction_type TEXT NOT NULL,
-        notes TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (category_id) REFERENCES categories(id)
-    )''')
-    
-    # Recurring bills table
-    c.execute('''CREATE TABLE IF NOT EXISTS recurring_bills (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        due_day INTEGER NOT NULL,
-        category_id INTEGER,
-        is_active INTEGER DEFAULT 1,
-        FOREIGN KEY (category_id) REFERENCES categories(id)
-    )''')
-    
-    # Savings goals table
-    c.execute('''CREATE TABLE IF NOT EXISTS savings_goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        target_amount REAL NOT NULL,
-        current_amount REAL DEFAULT 0,
-        deadline TEXT,
-        is_active INTEGER DEFAULT 1
-    )''')
-    
-    # Insert default categories if empty
-    c.execute("SELECT COUNT(*) FROM categories")
-    if c.fetchone()[0] == 0:
-        default_categories = [
-            ('Income', '💵', 1),
-            ('Rent', '🏠', 0),
-            ('Utilities', '⚡', 0),
-            ('Food', '🍔', 0),
-            ('Transportation', '🚗', 0),
-            ('Insurance', '🛡️', 0),
-            ('Phone', '📱', 0),
-            ('Entertainment', '🎬', 0),
-            ('Healthcare', '🏥', 0),
-            ('Savings', '🏦', 0),
-            ('Other', '📦', 0),
-        ]
-        c.executemany("INSERT INTO categories (name, icon, is_income) VALUES (?, ?, ?)", default_categories)
-    
-    conn.commit()
-    conn.close()
-
-def get_db_connection():
-    """Get database connection"""
-    import sqlite3
-    return sqlite3.connect(DB_PATH)
-
+# Helper functions using Supabase
 def clear_cache():
     """Clear all cached data after modifications"""
     get_categories.clear()
@@ -234,175 +174,153 @@ def clear_cache():
     get_monthly_summary.clear()
     get_category_breakdown.clear()
 
-# Initialize database
-if not DB_PATH.exists():
-    init_db()
-else:
-    init_db()
-
-# Helper functions
 @st.cache_data(ttl=60)
 def get_categories(transaction_type=None):
-    """Get categories from database"""
-    conn = get_db_connection()
+    """Get categories from Supabase"""
     if transaction_type:
         if transaction_type == 'income':
-            df = pd.read_sql("SELECT * FROM categories WHERE is_income = 1", conn)
+            result = supabase.table('categories').select('*').eq('is_income', 1).execute()
         else:
-            df = pd.read_sql("SELECT * FROM categories WHERE is_income = 0", conn)
+            result = supabase.table('categories').select('*').eq('is_income', 0).execute()
     else:
-        df = pd.read_sql("SELECT * FROM categories", conn)
-    conn.close()
-    return df
+        result = supabase.table('categories').select('*').execute()
+    return pd.DataFrame(result.data)
 
 @st.cache_data(ttl=60)
 def get_transactions(limit=100):
-    """Get transactions from database"""
-    conn = get_db_connection()
-    df = pd.read_sql(f"""
-        SELECT t.id, t.date, t.amount, t.transaction_type, t.notes, 
-               c.name as category, c.icon as category_icon
-        FROM transactions t
-        LEFT JOIN categories c ON t.category_id = c.id
-        ORDER BY t.date DESC, t.id DESC
-        LIMIT {limit}
-    """, conn)
-    conn.close()
+    """Get transactions from Supabase"""
+    result = supabase.table('transactions').select('id, date, amount, transaction_type, notes, category_id').order('date', desc=True).order('id', desc=True).limit(limit).execute()
+    df = pd.DataFrame(result.data)
+    if not df.empty:
+        # Join with categories to get category name and icon
+        cats = supabase.table('categories').select('id, name, icon').execute()
+        cats_df = pd.DataFrame(cats.data)
+        df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
+        df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
     return df
 
 def add_transaction(date_val, amount, category_id, transaction_type, notes):
-    """Add a new transaction"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""INSERT INTO transactions (date, amount, category_id, transaction_type, notes) 
-                 VALUES (?, ?, ?, ?, ?)""",
-              (date_val, amount, category_id, transaction_type, notes))
-    conn.commit()
-    conn.close()
+    """Add a new transaction to Supabase"""
+    supabase.table('transactions').insert({
+        'date': date_val.strftime('%Y-%m-%d') if isinstance(date_val, (date, datetime)) else str(date_val),
+        'amount': amount,
+        'category_id': category_id,
+        'transaction_type': transaction_type,
+        'notes': notes
+    }).execute()
     clear_cache()
 
 @st.cache_data(ttl=60)
 def get_recurring_bills():
-    """Get recurring bills"""
-    conn = get_db_connection()
-    df = pd.read_sql("""
-        SELECT b.id, b.name, b.amount, b.due_day, b.is_active,
-               c.name as category, c.icon as category_icon
-        FROM recurring_bills b
-        LEFT JOIN categories c ON b.category_id = c.id
-        ORDER BY b.due_day
-    """, conn)
-    conn.close()
+    """Get recurring bills from Supabase"""
+    result = supabase.table('recurring_bills').select('*').order('due_day').execute()
+    df = pd.DataFrame(result.data)
+    if not df.empty:
+        # Join with categories
+        cats = supabase.table('categories').select('id, name, icon').execute()
+        cats_df = pd.DataFrame(cats.data)
+        df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
+        df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
     return df
 
 def add_recurring_bill(name, amount, due_day, category_id):
-    """Add a recurring bill"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("""INSERT INTO recurring_bills (name, amount, due_day, category_id) 
-                 VALUES (?, ?, ?, ?)""", (name, amount, due_day, category_id))
-    conn.commit()
-    conn.close()
+    """Add a recurring bill to Supabase"""
+    supabase.table('recurring_bills').insert({
+        'name': name,
+        'amount': amount,
+        'due_day': due_day,
+        'category_id': category_id
+    }).execute()
     clear_cache()
 
 def delete_transaction(tx_id):
-    """Delete a transaction"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
-    conn.commit()
-    conn.close()
+    """Delete a transaction from Supabase"""
+    supabase.table('transactions').delete().eq('id', tx_id).execute()
     clear_cache()
 
 @st.cache_data(ttl=60)
 def get_monthly_summary(year=None, month=None):
-    """Get monthly income/expense summary"""
-    conn = get_db_connection()
+    """Get monthly income/expense summary from Supabase"""
     if year and month:
-        filter_str = f"WHERE strftime('%Y', date) = '{year}' AND strftime('%m', date) = '{month:02d}'"
+        month_str = f"{year}-{month:02d}%"
+        result = supabase.table('transactions').select('amount, transaction_type').like('date', month_str).execute()
     else:
-        filter_str = ""
+        result = supabase.table('transactions').select('amount, transaction_type').execute()
     
-    df = pd.read_sql(f"""
-        SELECT 
-            SUM(CASE WHEN transaction_type = 'income' THEN amount ELSE 0 END) as total_income,
-            SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) as total_expense
-        FROM transactions
-        {filter_str}
-    """, conn)
-    conn.close()
-    return df
+    df = pd.DataFrame(result.data)
+    if df.empty:
+        return pd.DataFrame([{'total_income': 0, 'total_expense': 0}])
+    
+    income = df[df['transaction_type'] == 'income']['amount'].sum()
+    expense = df[df['transaction_type'] == 'expense']['amount'].sum()
+    return pd.DataFrame([{'total_income': income, 'total_expense': expense}])
 
 @st.cache_data(ttl=60)
 def get_category_breakdown(transaction_type='expense', year=None, month=None):
-    """Get spending by category"""
-    conn = get_db_connection()
+    """Get spending by category from Supabase"""
+    # Get transactions for the period
     if year and month:
-        filter_str = f"AND strftime('%Y', t.date) = '{year}' AND strftime('%m', t.date) = '{month:02d}'"
+        month_str = f"{year}-{month:02d}%"
+        result = supabase.table('transactions').select('amount, category_id, transaction_type').like('date', month_str).execute()
     else:
-        filter_str = ""
+        result = supabase.table('transactions').select('amount, category_id, transaction_type').execute()
     
-    df = pd.read_sql(f"""
-        SELECT c.name, c.icon, SUM(t.amount) as total
-        FROM transactions t
-        JOIN categories c ON t.category_id = c.id
-        WHERE t.transaction_type = '{transaction_type}' {filter_str}
-        GROUP BY c.id
-        ORDER BY total DESC
-    """, conn)
-    conn.close()
-    return df
+    df = pd.DataFrame(result.data)
+    if df.empty:
+        return pd.DataFrame()
+    
+    # Filter by transaction type
+    df = df[df['transaction_type'] == transaction_type]
+    if df.empty:
+        return pd.DataFrame()
+    
+    # Get category info
+    cats = supabase.table('categories').select('id, name, icon').execute()
+    cats_df = pd.DataFrame(cats.data)
+    
+    # Merge and group
+    df = df.merge(cats_df, left_on='category_id', right_on='id', how='left')
+    breakdown = df.groupby(['name', 'icon'])['amount'].sum().reset_index()
+    breakdown.columns = ['name', 'icon', 'total']
+    return breakdown.sort_values('total', ascending=False)
 
 @st.cache_data(ttl=60)
 def get_savings_goals():
-    """Get all savings goals"""
-    conn = get_db_connection()
-    df = pd.read_sql("""
-        SELECT * FROM savings_goals
-        ORDER BY is_active DESC, id DESC
-    """, conn)
-    conn.close()
-    return df
+    """Get all savings goals from Supabase"""
+    result = supabase.table('savings_goals').select('*').order('is_active', desc=True).order('id', desc=True).execute()
+    return pd.DataFrame(result.data)
 
 def add_savings_goal(name, target_amount, deadline=None):
-    """Add a new savings goal"""
-    conn = get_db_connection()
-    c = conn.cursor()
+    """Add a new savings goal to Supabase"""
     deadline_val = deadline.strftime('%Y-%m-%d') if deadline else None
-    c.execute("""INSERT INTO savings_goals (name, target_amount, deadline) 
-                 VALUES (?, ?, ?)""", (name, target_amount, deadline_val))
-    conn.commit()
-    conn.close()
+    supabase.table('savings_goals').insert({
+        'name': name,
+        'target_amount': target_amount,
+        'deadline': deadline_val
+    }).execute()
     clear_cache()
 
 def update_savings_goal_amount(goal_id, amount_to_add):
-    """Add to a savings goal's current amount"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE savings_goals SET current_amount = current_amount + ? WHERE id = ?", 
-              (amount_to_add, goal_id))
-    conn.commit()
-    conn.close()
-    clear_cache()
+    """Add to a savings goal's current amount in Supabase"""
+    # Get current amount
+    result = supabase.table('savings_goals').select('current_amount').eq('id', goal_id).execute()
+    if result.data:
+        current = result.data[0]['current_amount'] or 0
+        supabase.table('savings_goals').update({'current_amount': current + amount_to_add}).eq('id', goal_id).execute()
+        clear_cache()
 
 def delete_savings_goal(goal_id):
-    """Delete a savings goal"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("DELETE FROM savings_goals WHERE id = ?", (goal_id,))
-    conn.commit()
-    conn.close()
+    """Delete a savings goal from Supabase"""
+    supabase.table('savings_goals').delete().eq('id', goal_id).execute()
     clear_cache()
 
 def toggle_savings_goal(goal_id):
-    """Toggle a savings goal active status"""
-    conn = get_db_connection()
-    c = conn.cursor()
-    c.execute("UPDATE savings_goals SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", 
-              (goal_id,))
-    conn.commit()
-    conn.close()
-    clear_cache()
+    """Toggle a savings goal active status in Supabase"""
+    result = supabase.table('savings_goals').select('is_active').eq('id', goal_id).execute()
+    if result.data:
+        current = result.data[0]['is_active'] or 0
+        supabase.table('savings_goals').update({'is_active': 0 if current else 1}).eq('id', goal_id).execute()
+        clear_cache()
 
 # Navigation - top for mobile, sidebar for desktop
 pages = ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "🎯 Savings Goals", "📁 Import CSV", "📈 Reports"]
