@@ -319,7 +319,7 @@ if page == "📊 Dashboard":
                 font_color='white',
                 legend=dict(orientation="h", yanchor="bottom", y=-0.2)
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             st.info("No expenses recorded this month")
     
@@ -351,7 +351,7 @@ if page == "📊 Dashboard":
             font_color='white',
             legend=dict(orientation="h", yanchor="bottom", y=-0.2)
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     # Upcoming bills
     st.markdown("---")
@@ -386,7 +386,7 @@ elif page == "➕ Add Transaction":
         
         notes = st.text_input("Notes (optional)")
         
-        submitted = st.form_submit_button("Add Transaction", use_container_width=True)
+        submitted = st.form_submit_button("Add Transaction", width='stretch')
         
         if submitted:
             if amount > 0:
@@ -586,7 +586,7 @@ elif page == "📈 Reports":
             'Expenses': '${:,.2f}',
             'Net': '${:,.2f}'
         }).applymap(lambda x: 'color: #4ade80' if x > 0 else 'color: #f87171', subset=['Net']),
-        use_container_width=True
+        width='stretch'
     )
     
     # Year totals
@@ -624,7 +624,7 @@ elif page == "📈 Reports":
             font_color='white',
             yaxis={'categoryorder': 'total ascending'}
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 # Footer
 st.markdown("---")
