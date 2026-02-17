@@ -11,15 +11,15 @@ from datetime import datetime, date
 import os
 from pathlib import Path
 
-# Configure page
+# Configure page - collapsed sidebar by default for mobile friendliness
 st.set_page_config(
     page_title="Jim's Finance Tracker",
     page_icon="💰",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Custom dark theme CSS
+# Custom dark theme CSS - Mobile responsive
 st.markdown("""
 <style>
     .stApp {
@@ -51,6 +51,32 @@ st.markdown("""
     }
     .css-1d391kg {
         padding-top: 1rem;
+    }
+    
+    /* Mobile: Hide sidebar nav, show top nav instead */
+    @media (max-width: 768px) {
+        section[data-testid="stSidebar"] {
+            display: none !important;
+        }
+        .stRadio > div {
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            justify-content: center;
+        }
+        div[data-testid="stRadio"] > div > label {
+            padding: 8px 12px !important;
+            margin: 4px !important;
+            font-size: 0.8rem !important;
+        }
+        div[data-testid="stMetric"] {
+            padding: 0.5rem !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.8rem !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -232,13 +258,18 @@ def get_category_breakdown(transaction_type='expense', year=None, month=None):
     conn.close()
     return df
 
-# Sidebar navigation
-st.sidebar.title("💰 Jim's Finance Tracker")
-st.sidebar.markdown("---")
+# Navigation - top for mobile, sidebar for desktop
+pages = ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "📁 Import CSV", "📈 Reports"]
 
-page = st.sidebar.radio(
+# Use tabs for mobile-friendly navigation
+st.title("💰 Jim's Finance Tracker")
+
+# Create a tab-like interface using radio buttons at the top
+page = st.radio(
     "Navigate",
-    ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "📁 Import CSV", "📈 Reports"]
+    pages,
+    horizontal=True,
+    label_visibility="collapsed"
 )
 
 # Get current month/year for defaults
@@ -596,6 +627,5 @@ elif page == "📈 Reports":
         st.plotly_chart(fig, use_container_width=True)
 
 # Footer
-st.sidebar.markdown("---")
-st.sidebar.markdown(f"💰 Built with ❤️ for Jim")
-st.sidebar.markdown(f"📅 Last updated: {today.strftime('%B %d, %Y')}")
+st.markdown("---")
+st.markdown(f"💰 Built with ❤️ for Jim | 📅 {today.strftime('%B %d, %Y')}")
