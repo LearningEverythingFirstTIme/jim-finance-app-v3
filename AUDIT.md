@@ -1,204 +1,385 @@
-# Jim's Finance Tracker - Audit Report
+# Jim's Finance Tracker - Audit Report (Supabase Version)
 
 **Date:** 2026-02-17  
 **Auditor:** OpenClaw Agent  
 **File:** `streamlit_app.py`  
-**App Type:** Streamlit Personal Finance Web App
+**App Type:** Streamlit Personal Finance Web App  
+**Database:** Supabase (refactored from SQLite)
 
 ---
 
 ## Executive Summary
 
-The app is a functional personal finance tracker with solid basics but has several critical issues that would prevent daily usage. The code works but has security vulnerabilities, performance problems, and UX friction points that need addressing before Jim would actually use this daily.
+The app has been refactored to use Supabase which is great for cloud deployment. However, there are **critical security vulnerabilities** (hardcoded credentials), **no error handling**, and several **performance issues**. The core functionality works but production deployment would expose the database and crash on any API error.
 
-**Overall Assessment:** ⭐⭐½ (2.5/5) - Needs work before adoption
-
----
-
-## 1. Code Review Issues
-
-### Critical (Fix Immediately)
-
-| # | Issue | Location | Description |
-|---|-------|----------|-------------|
-| C1 | **Hardcoded Password** | Line 22 | `APP_PASSWORD = "jim123"` is hardcoded in plain text. Anyone with repo access can see the password. |
-| C2 | **SQL Injection Risk** | Lines 147-165, 200-230 | Multiple functions use f-string interpolation in SQL queries (`f"WHERE strftime('%Y', date) = '{year}'"`). While year/month come from controlled sources now, this pattern is dangerous if extended. |
-| C3 | **No Cloud Database Path** | Line 84 | `DB_PATH = Path(__file__).parent / "data" / "finance.db"` won't work on Streamlit Cloud (read-only filesystem). Needs `st.secrets` or temp directory. |
-| C4 | **No Error Handling** | All `get_*` and `add_*` functions | No try/except blocks. Database errors will crash the app with ugly tracebacks. |
-
-### High Priority
-
-| # | Issue | Location | Description |
-|---|-------|----------|-------------|
-| H1 | **No Transaction Edit** | Transactions page | Users can only DELETE transactions, not edit them. One accidental click and data is gone forever. |
-| H2 | **Missing Delete Confirmation** | Line 398 | `st.button("🗑️ Delete", key=f"del_{row['id']}")` immediately deletes without confirmation. Too easy to accidentally delete. |
-| H3 | **No Data Export** | Entire app | No way to export data. If Jim wants to switch apps or do analysis in Excel, he's stuck. |
-| H4 | **Inconsistent State Management** | Line 101 | `if not DB_PATH.exists(): init_db()` - always calls `init_db()` on every run even if DB exists, causing unnecessary overhead. |
-
-### Medium Priority
-
-| # | Issue | Location | Description |
-|---|-------|----------|-------------|
-| M1 | **No Input Validation** | `add_transaction()` | Doesn't validate that amount is positive. Doesn't validate date is reasonable (not in 1900s or 2100s). |
-| M2 | **Connection-per-Query Pattern** | All helper functions | Every function opens and closes its own SQLite connection. This is inefficient and causes connection overhead. Should use connection pooling or single connection. |
-| M3 | **Missing @st.cache_data** | Dashboard queries | Every dashboard reload re-queries all data. Should cache monthly summaries, category breakdowns, etc. with `@st.cache_data`. |
-| M4 | **Unused Import** | Line 7 | `import os` is imported but never used. |
+**Overall Assessment:** ⭐⭐⭐ (3/5) - Functional but needs security & reliability fixes
 
 ---
 
-## 2. UX/UI Review Issues
+## 1. Critical Security Issues
 
-### High Priority
+### C1: Hardcoded Supabase Credentials (CRITICAL)
+**Location:** Lines 21-28
 
-| # | Issue | Description | Recommendation |
-|---|-------|-------------|----------------|
-| U1 | **No "Getting Started" Guide** | New users land on a blank dashboard with no transactions and no guidance. | Add an onboarding step or welcome modal showing how to add first transaction. |
-| U2 | **Confusing Category Selector** | In "Add Transaction", the category dropdown shows icon + name but uses internal ID values. The format_func lambda is fragile and hard to read. | Make category selection more intuitive with clear groupings or search. |
-| U3 | **No Quick-Add from Dashboard** | Dashboard shows balance but has no way to quickly add income/expense without navigating to another page. | Add a mini form or "+" buttons on the dashboard for quick entry. |
-| U4 | **Poor Delete UX** | Single click deletes. No undo. No "are you sure?" | Add confirmation dialog or move deleted items to a "trash" that clears after 30 days. |
+```python
+SUPABASE_URL = "https://qqwnnvoahcsrffacafig.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxd25udm9haGNzcmZmYWNhZmlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNTMyNjMsImV4cCI6MjA4NjkyOTI2M30.7OfMaGSLbvMNFOoT2fGB1DhiojKWO6R1Uoo1N8PTAIE"
+APP_PASSWORD = "jim123"
+```
 
-### Medium Priority
+**Problem:** 
+- Anyone with repo access can see the Supabase project URL and anon key
+- The anon key is exposed in client-side JavaScript (Streamlit sends it to browser)
+- Password is plaintext in source code
 
-| # | Issue | Description | Recommendation |
-|---|-------|-------------|----------------|
-| U5 | **Radio Navigation is Unconventional** | Top-page radio buttons for navigation differs from typical sidebar nav. May confuse users expecting standard patterns. | Consider a sidebar that collapses to hamburger menu on mobile, or add explicit page tabs. |
-| U6 | **Charts Too Small on Desktop** | Charts use `width='stretch'` but container constraints may make them cramped. | Give charts more dedicated space or allow fullscreen view. |
-| U7 | **Transactions Page is Slow with Many Items** | Iterating through DataFrame with `st.expander` for each row is slow when there are 100+ transactions. | Use `st.dataframe` with editable cells or virtualized list for better performance. |
-| U8 | **Mobile: Keyboard Covers Input** | On mobile, the virtual keyboard can obscure the form fields in "Add Transaction". | Add viewport meta tag or scroll-to-visible behavior. |
+**Impact:** 
+- Database can be accessed by anyone with the URL/key
+- Attacker can read/write/delete all data
+- Unauthorized access to the app
 
-### Low Priority
-
-| # | Issue | Description | Recommendation |
-|---|-------|-------------|----------------|
-| L1 | **Footer is Cluttered** | Shows "Built with ❤️ for Jim | 📅 February 17, 2026". Could be simpler. |
-| L2 | **No Dark/Light Toggle** | Hardcoded dark theme. Some users prefer light mode. | Add theme toggle in settings. |
-| L3 | **Bills Don't Show Total** | Recurring bills page shows individual bills but no monthly/yearly total at top. | Add summary metrics like other pages. |
-
----
-
-## 3. Adoption Barriers
-
-### Critical Barriers to Daily Use
-
-1. **No "Why should I use this?"** - The app has no clear value proposition. Jim opens it, sees empty state, and has no incentive to start entering data.
-
-2. **Manual Entry is Tedious** - Every transaction requires: navigating to "Add Transaction" → selecting type → selecting date → entering amount → selecting category → clicking submit. Too many clicks for daily use.
-
-3. **CSV Import is Clunky** - The import has column mapping but:
-   - No validation of date formats
-   - Auto-categorization is very basic (only 4 keyword categories)
-   - No preview of mapped transactions before import
-   - No rollback if import goes wrong
-
-4. **No Recurring Transaction Automation** - Recurring bills are only tracked/displayed, not automatically added. Jim still needs to manually enter each bill payment.
-
-### Friction Points That Would Make Jim Say "This is Too Complicated"
-
-- **First-time setup**: Password → blank dashboard. No guided tour.
-- **Adding a transaction**: 6 steps minimum.
-- **Importing a CSV**: 4 steps, requires understanding column mapping.
-- **Finding anything**: No search functionality in transactions.
-- **Making sense of data**: Reports are basic, no insights or suggestions.
+**Fix:**
+```python
+# Use Streamlit secrets (st.secrets.toml in .streamlit folder)
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
+APP_PASSWORD = st.secrets.get("app_password", "jim123")  # fallback for dev
+```
 
 ---
 
-## 4. Missing Features (The "Wow" Factor)
+### C2: Password Validation Timing Attack
+**Location:** Line 46
 
-### Must-Have for Daily Use
+```python
+if password == APP_PASSWORD:
+```
 
-| Feature | Why It Matters |
-|---------|----------------|
-| **Quick Add Widget** | Add transaction in 2 clicks from dashboard |
-| **Search Transactions** | Find specific purchases by description/amount |
-| **Data Export (CSV/Excel)** | Backup and switch capability |
-| **Recurring Auto-Post** | Bills auto-added when due |
+**Problem:** Direct string comparison is vulnerable to timing attacks. While unlikely to be exploited here, it's bad practice.
 
-### Should-Have (Would Delight)
-
-| Feature | Why It Matters |
-|---------|----------------|
-| **Budget Limits per Category** | Alert when approaching limit |
-| **Spending Insights** | "You spent 40% more on dining this month" |
-| **Receipt Photo Attachment** | Store receipt images with transactions |
-| **Bill Reminder Notifications** | Push notification before due date |
-| **Multiple Accounts** | Track cash, credit, checking separately |
-
-### Nice-to-Have
-
-- Multi-currency support
-- Investment tracking
-- Debt payoff planner
-- Tax category tagging
-- Receipt OCR scanning
-- API integration with banks (Plaid)
+**Fix:**
+```python
+import hmac
+if hmac.compare_digest(password, APP_PASSWORD):
+```
 
 ---
 
-## 5. Mobile Experience Review
+## 2. Error Handling Gaps (HIGH PRIORITY)
 
-### Physical Layout Test (320px-428px width)
+### E1: No Try/Except on Any Supabase Calls
+**Location:** All helper functions (lines 134-240)
 
-| Issue | Details |
-|-------|---------|
-| ✅ Sidebar hidden correctly | CSS `@media (max-width: 768px)` hides sidebar |
-| ⚠️ Top nav radio buttons | Displayed but may cause horizontal scroll on small phones |
-| ✅ Metrics are responsive | Font sizes scale down appropriately |
-| ⚠️ Forms may be cramped | 2-column layout on narrow screens will stack awkwardly |
-| ❌ No touch-optimized targets | Buttons may be too small for comfortable tapping |
-| ❌ Keyboard overlap | Forms in bottom half of screen may be hidden by keyboard |
+**Problem:** Every database call can fail:
+- Network connectivity issues
+- Supabase service outages  
+- Invalid data causing constraint violations
+- Rate limiting
 
-### Specific Mobile Concerns
+When errors occur, users see ugly Python tracebacks.
 
-1. **Date picker**: Uses native `<input type="date">` which varies by browser. Some mobile browsers show poor date pickers.
+**Example of current code (no error handling):**
+```python
+def get_categories(transaction_type=None):
+    if transaction_type:
+        if transaction_type == 'income':
+            result = supabase.table('categories').select('*').eq('is_income', 1).execute()
+        else:
+            result = supabase.table('categories').select('*').eq('is_income', 0).execute()
+    else:
+        result = supabase.table('categories').select('*').execute()
+    return pd.DataFrame(result.data)  # Crashes if result.data is None
+```
 
-2. **Number input**: `st.number_input` on mobile can be finicky with decimal points.
-
-3. **Charts**: Pie chart and bar chart may be too small to read on phone screens.
-
-4. **Transaction list**: Scrolling through 100+ expanders on mobile is slow and memory-intensive.
-
----
-
-## Priority Recommendations
-
-### Phase 1: Fix Critical Issues (Do First)
-
-1. **Move password to secrets** - Use `st.secrets["password"]` instead of hardcoded
-2. **Fix database path for cloud** - Use temp directory or uploaded file mechanism
-3. **Add error handling** - Wrap all DB operations in try/except
-4. **Add delete confirmation** - Modal or confirmation step before delete
-
-### Phase 2: Improve Daily Usability
-
-1. **Add Quick-Add buttons** to dashboard
-2. **Add search** to transactions
-3. **Add data export** (CSV download)
-4. **Implement caching** with `@st.cache_data`
-
-### Phase 3: Polish & Delight
-
-1. **Onboarding/welcome** for new users
-2. **Better CSV import** with preview and validation
-3. **Budget limits and alerts**
-4. **Auto-populate recurring bills**
+**Fix:**
+```python
+def get_categories(transaction_type=None):
+    try:
+        query = supabase.table('categories').select('*')
+        if transaction_type == 'income':
+            query = query.eq('is_income', 1)
+        elif transaction_type == 'expense':
+            query = query.eq('is_income', 0)
+        result = query.execute()
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Failed to load categories: {e}")
+        return pd.DataFrame()
+```
 
 ---
 
-## Quick Wins Summary (Top 5 to Fix Today)
+### E2: No Input Validation
+**Location:** `add_transaction()`, `add_recurring_bill()`, `add_savings_goal()`
 
-1. **Add `@st.cache_data`** to `get_monthly_summary`, `get_category_breakdown`, `get_transactions` - instant performance boost
-2. **Add confirmation** before transaction deletion - prevents data loss
-3. **Add Quick Add form** to dashboard - reduces friction
-4. **Move password to secrets** - security fix
-5. **Add search box** to transactions - find transactions fast
+**Problem:**
+- No validation that amount is positive
+- No validation on date ranges
+- No validation on required fields
 
 ---
 
-## Appendix: Code Quality Metrics
+### E3: Missing Null Checks After Joins
+**Location:** Lines 157-160, 175-178
 
-- **Lines of Code:** ~650
-- **Functions:** 20+
-- **Database Tables:** 4 (categories, transactions, recurring_bills, savings_goals)
-- **Dependencies:** streamlit, pandas, plotly (lightweight ✓)
-- **Estimated Setup Time:** 10 minutes for new user
-- **Estimated Daily Usage Time:** 2-3 minutes per transaction entry
+```python
+df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
+df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
+```
+
+**Problem:** If `category_id` references a deleted category, the merge produces null values. Code doesn't handle this gracefully.
+
+---
+
+## 3. Performance Issues
+
+### P1: Redundant Category Queries
+**Location:** Multiple functions query categories separately
+
+- `get_transactions()` - queries categories (lines 157)
+- `get_recurring_bills()` - queries categories (line 175)  
+- `get_category_breakdown()` - queries categories (line 217)
+- `get_categories()` - queries categories
+
+Every function call fetches categories again. While cached, this adds latency.
+
+**Fix:** Create a single cached category lookup:
+```python
+@st.cache_data(ttl=300)
+def get_category_lookup():
+    """Get all categories as a lookup dict for O(1) access"""
+    result = supabase.table('categories').select('id, name, icon').execute()
+    if not result.data:
+        return {}
+    df = pd.DataFrame(result.data)
+    return df.set_index('id').to_dict('index')
+```
+
+---
+
+### P2: Inefficient JOIN Pattern
+**Location:** `get_transactions()` (lines 151-162)
+
+```python
+# Current: Two separate queries + pandas merge
+result = supabase.table('transactions').select(...).execute()
+df = pd.DataFrame(result.data)
+cats = supabase.table('categories').select('id, name, icon').execute()
+cats_df = pd.DataFrame(cats.data)
+df = df.merge(cats_df, left_on='category_id', right_on='id', how='left')
+```
+
+**Better:** Use Supabase's `select()` with foreign table or do a single query:
+```python
+# Supabase can do this with proper foreign key setup
+result = supabase.table('transactions').select('*, categories(name, icon)').execute()
+```
+
+---
+
+### P3: No Connection Pooling
+**Location:** Line 35
+
+```python
+supabase = get_supabase_client()
+```
+
+The client is created once but could benefit from explicit pooling configuration for high traffic.
+
+---
+
+### P4: LIKE Query for Date Filtering
+**Location:** Lines 193-197, 207-212
+
+```python
+month_str = f"{year}-{month:02d}%"
+result = supabase.table('transactions').select(...).like('date', month_str).execute()
+```
+
+**Problem:** Using `LIKE` on a date column can't use indexes efficiently. Better to use explicit range:
+```python
+start_date = f"{year}-{month:02d}-01"
+if month == 12:
+    end_date = f"{year+1}-01-01"
+else:
+    end_date = f"{year}-{month+1:02d}-01"
+result = supabase.table('transactions').select(...).gte('date', start_date).lt('date', end_date).execute()
+```
+
+---
+
+## 4. Race Conditions & Data Inconsistencies
+
+### R1: Read-Then-Write on Savings Goals
+**Location:** Lines 198-203
+
+```python
+def update_savings_goal_amount(goal_id, amount_to_add):
+    # Get current amount
+    result = supabase.table('savings_goals').select('current_amount').eq('id', goal_id).execute()
+    if result.data:
+        current = result.data[0]['current_amount'] or 0
+        supabase.table('savings_goals').update({'current_amount': current + amount_to_add}).eq('id', goal_id).execute()
+```
+
+**Problem:** Classic race condition. If two users update simultaneously:
+1. User A reads current = 100
+2. User B reads current = 100  
+3. User A writes 100 + 50 = 150
+4. User B writes 100 + 75 = 175
+5. Final value: 175 (should be 225)
+
+**Fix:** Use Supabase RPC or atomic increment:
+```python
+# In Supabase, use RPC or database function
+supabase.rpc('increment_savings_goal', {'goal_id': goal_id, 'amount': amount_to_add}).execute()
+
+# Or use atomic update
+supabase.table('savings_goals').update({'current_amount': supabase.raw('current_amount + ' + str(amount_to_add))}).eq('id', goal_id).execute()
+```
+
+---
+
+### R2: No Transaction for Multi-Operation Changes
+**Location:** CSV Import (lines 450-490)
+
+If import fails halfway, you have partial data with no rollback.
+
+---
+
+## 5. Missing Features & Edge Cases
+
+### F1: No Data Export
+Users can't export their data for backup or to switch apps.
+
+### F2: No Transaction Search
+With 200 transactions, finding a specific one is tedious.
+
+### F3: No Edit Transaction
+Users can only delete, not edit existing transactions.
+
+### F4: Category Deletion Not Handled
+If a category is deleted from Supabase, transactions still reference it. No fallback display.
+
+### F5: Empty State Edge Cases
+- `get_monthly_summary` returns DataFrame with zeros but no income/expense columns if no data (line 188)
+- Division by zero in savings goal progress if target_amount is 0
+
+### F6: CSV Import Issues
+- No validation of date formats
+- Very basic auto-categorization (only 4 keyword categories)
+- No preview before import
+- No rollback capability
+
+---
+
+## 6. UX Improvements
+
+| Issue | Description | Recommendation |
+|-------|-------------|----------------|
+| U1 | Delete confirmation is session-state heavy | Use Streamlit's `st.dialog()` (newer feature) |
+| U2 | Progress bars in savings goals could show more info | Add days remaining, estimated completion date |
+| U3 | Recurring bills show no summary total | Add total monthly bills metric at top |
+| U4 | No way to mark bill as "paid" | Add paid status tracking |
+| U5 | Date filtering uses LIKE instead of proper range | Fix for performance + correctness |
+
+---
+
+## 7. Supabase Schema Expectations
+
+The code expects these tables with these columns:
+
+| Table | Columns | Notes |
+|-------|---------|-------|
+| `categories` | id, name, icon, is_income | ✅ `is_income` is integer (0/1) |
+| `transactions` | id, date, amount, category_id, transaction_type, notes | ✅ |
+| `recurring_bills` | id, name, amount, due_day, category_id, is_active | ✅ |
+| `savings_goals` | id, name, target_amount, current_amount, deadline, is_active | ✅ |
+
+**Potential Issue:** `is_income` being integer (0/1) works but boolean would be cleaner. Ensure Supabase schema matches.
+
+---
+
+## Priority Action Items
+
+### 🔴 MUST FIX (Before Production)
+
+| Priority | Item | Effort | Impact |
+|----------|------|--------|--------|
+| 1 | Move Supabase credentials to `st.secrets` | 10 min | Critical security |
+| 2 | Move app password to `st.secrets` | 5 min | Critical security |
+| 3 | Add try/except to all DB functions | 30 min | App stability |
+| 4 | Add null checks after joins | 10 min | Crash prevention |
+| 5 | Fix race condition in savings goals | 15 min | Data integrity |
+
+### 🟡 SHOULD FIX (Before Daily Use)
+
+| Priority | Item | Effort | Impact |
+|----------|------|--------|--------|
+| 6 | Add CSV export functionality | 20 min | High |
+| 7 | Add transaction search | 20 min | High |
+| 8 | Fix date filtering (LIKE → range) | 15 min | Performance |
+| 9 | Add category lookup cache | 15 min | Performance |
+| 10 | Input validation on forms | 20 min | Data quality |
+
+### 🟢 NICE TO HAVE
+
+| Priority | Item | Effort | Impact |
+|----------|------|--------|--------|
+| 11 | Add edit transaction | 30 min | Medium |
+| 12 | Recurring bills summary | 10 min | Medium |
+| 13 | Better delete confirmation UI | 15 min | Medium |
+| 14 | Budget limits per category | 45 min | Low |
+
+---
+
+## Quick Wins (Can Fix Today)
+
+### Fix 1: Security - Use st.secrets
+```python
+# At top of file
+import streamlit as st
+
+# Replace hardcoded values with:
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "") or "https://qqwnnvoahcsrffacafig.supabase.co"
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "") or "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+APP_PASSWORD = st.secrets.get("app_password", "jim123")
+
+# Create .streamlit/secrets.toml with:
+# SUPABASE_URL = "your-url"
+# SUPABASE_KEY = "your-key"  
+# app_password = "secure-password"
+```
+
+### Fix 2: Error Handling Wrapper
+```python
+def safe_supabase_call(func, *args, **kwargs):
+    """Wrapper for all Supabase calls"""
+    try:
+        return func(*args, **kwargs)
+    except Exception as e:
+        st.error(f"Database error: {str(e)}")
+        return pd.DataFrame()  # Return empty on error
+```
+
+### Fix 3: Atomic Savings Update
+```python
+def update_savings_goal_amount(goal_id, amount_to_add):
+    # Use RPC if available, otherwise this is a known limitation
+    supabase.table('savings_goals').update({
+        'current_amount': supabase.raw(f'current_amount + {amount_to_add}')
+    }).eq('id', goal_id).execute()
+    clear_cache()
+```
+
+---
+
+## Summary
+
+The refactor to Supabase was a good move for cloud deployment, but the app needs:
+
+1. **Immediate security fixes** - credentials shouldn't be in code
+2. **Error handling** - any network failure crashes the app  
+3. **Data integrity** - race conditions can corrupt savings data
+4. **Performance tuning** - reduce redundant queries
+
+With these fixes, the app would be production-ready for daily use.

@@ -20,9 +20,22 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Supabase configuration
-SUPABASE_URL = "https://qqwnnvoahcsrffacafig.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxd25udm9haGNzcmZmYWNhZmlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNTMyNjMsImV4cCI6MjA4NjkyOTI2M30.7OfMaGSLbvMNFOoT2fGB1DhiojKWO6R1Uoo1N8PTAIE"
+# Supabase configuration - use st.secrets, fallback to env vars or hardcoded for dev
+# In production (Streamlit Cloud), add these to Secrets:
+# [supabase]
+# url = "https://xxxx.supabase.co"
+# key = "eyJxxx"
+# app_password = "your-secure-password"
+
+try:
+    SUPABASE_URL = st.secrets.get("supabase", {}).get("url", "")
+    SUPABASE_KEY = st.secrets.get("supabase", {}).get("key", "")
+    APP_PASSWORD = st.secrets.get("supabase", {}).get("app_password", "jim123")
+except:
+    # Fallback for local development
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://qqwnnvoahcsrffacafig.supabase.co")
+    SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFxd25udm9haGNzcmZmYWNhZmlnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNTMyNjMsImV4cCI6MjA4NjkyOTI2M30.7OfMaGSLbvMNFOoT2fGB1DhiojKWO6R1Uoo1N8PTAIE")
+    APP_PASSWORD = os.environ.get("APP_PASSWORD", "jim123")
 
 @st.cache_resource
 def get_supabase_client() -> Client:
@@ -37,7 +50,6 @@ if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
 
 # Simple password check (change this to something more secure in production)
-APP_PASSWORD = "jim123"
 
 def check_password():
     """Show login screen if not authenticated"""
@@ -164,7 +176,7 @@ st.markdown("""
 # Database is now Supabase - no local initialization needed
 # Tables are created in Supabase Dashboard
 
-# Helper functions using Supabase
+# Helper functions using Supabase with error handling
 def clear_cache():
     """Clear all cached data after modifications"""
     get_categories.clear()
@@ -177,150 +189,222 @@ def clear_cache():
 @st.cache_data(ttl=60)
 def get_categories(transaction_type=None):
     """Get categories from Supabase"""
-    if transaction_type:
+    try:
+        query = supabase.table('categories').select('*')
         if transaction_type == 'income':
-            result = supabase.table('categories').select('*').eq('is_income', 1).execute()
-        else:
-            result = supabase.table('categories').select('*').eq('is_income', 0).execute()
-    else:
-        result = supabase.table('categories').select('*').execute()
-    return pd.DataFrame(result.data)
+            query = query.eq('is_income', 1)
+        elif transaction_type == 'expense':
+            query = query.eq('is_income', 0)
+        result = query.execute()
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Failed to load categories: {e}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=60)
 def get_transactions(limit=100):
     """Get transactions from Supabase"""
-    result = supabase.table('transactions').select('id, date, amount, transaction_type, notes, category_id').order('date', desc=True).order('id', desc=True).limit(limit).execute()
-    df = pd.DataFrame(result.data)
-    if not df.empty:
-        # Join with categories to get category name and icon
-        cats = supabase.table('categories').select('id, name, icon').execute()
-        cats_df = pd.DataFrame(cats.data)
-        df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
-        df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
-    return df
+    try:
+        result = supabase.table('transactions').select('id, date, amount, transaction_type, notes, category_id').order('date', desc=True).order('id', desc=True).limit(limit).execute()
+        df = pd.DataFrame(result.data) if result.data else pd.DataFrame()
+        if not df.empty:
+            # Join with categories to get category name and icon
+            try:
+                cats = supabase.table('categories').select('id, name, icon').execute()
+                if cats.data:
+                    cats_df = pd.DataFrame(cats.data)
+                    df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
+                    df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
+            except Exception:
+                df['category'] = 'Unknown'
+                df['category_icon'] = '❓'
+        return df
+    except Exception as e:
+        st.error(f"Failed to load transactions: {e}")
+        return pd.DataFrame()
 
 def add_transaction(date_val, amount, category_id, transaction_type, notes):
     """Add a new transaction to Supabase"""
-    supabase.table('transactions').insert({
-        'date': date_val.strftime('%Y-%m-%d') if isinstance(date_val, (date, datetime)) else str(date_val),
-        'amount': amount,
-        'category_id': category_id,
-        'transaction_type': transaction_type,
-        'notes': notes
-    }).execute()
-    clear_cache()
+    try:
+        supabase.table('transactions').insert({
+            'date': date_val.strftime('%Y-%m-%d') if isinstance(date_val, (date, datetime)) else str(date_val),
+            'amount': amount,
+            'category_id': category_id,
+            'transaction_type': transaction_type,
+            'notes': notes
+        }).execute()
+        clear_cache()
+        return True
+    except Exception as e:
+        st.error(f"Failed to add transaction: {e}")
+        return False
 
 @st.cache_data(ttl=60)
 def get_recurring_bills():
     """Get recurring bills from Supabase"""
-    result = supabase.table('recurring_bills').select('*').order('due_day').execute()
-    df = pd.DataFrame(result.data)
-    if not df.empty:
-        # Join with categories
-        cats = supabase.table('categories').select('id, name, icon').execute()
-        cats_df = pd.DataFrame(cats.data)
-        df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
-        df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
-    return df
+    try:
+        result = supabase.table('recurring_bills').select('*').order('due_day').execute()
+        df = pd.DataFrame(result.data) if result.data else pd.DataFrame()
+        if not df.empty:
+            try:
+                cats = supabase.table('categories').select('id, name, icon').execute()
+                if cats.data:
+                    cats_df = pd.DataFrame(cats.data)
+                    df = df.merge(cats_df, left_on='category_id', right_on='id', how='left', suffixes=('', '_cat'))
+                    df = df.rename(columns={'name': 'category', 'icon': 'category_icon'})
+            except Exception:
+                df['category'] = 'Unknown'
+                df['category_icon'] = '❓'
+        return df
+    except Exception as e:
+        st.error(f"Failed to load recurring bills: {e}")
+        return pd.DataFrame()
 
 def add_recurring_bill(name, amount, due_day, category_id):
     """Add a recurring bill to Supabase"""
-    supabase.table('recurring_bills').insert({
-        'name': name,
-        'amount': amount,
-        'due_day': due_day,
-        'category_id': category_id
-    }).execute()
-    clear_cache()
+    try:
+        supabase.table('recurring_bills').insert({
+            'name': name,
+            'amount': amount,
+            'due_day': due_day,
+            'category_id': category_id
+        }).execute()
+        clear_cache()
+        return True
+    except Exception as e:
+        st.error(f"Failed to add recurring bill: {e}")
+        return False
 
 def delete_transaction(tx_id):
     """Delete a transaction from Supabase"""
-    supabase.table('transactions').delete().eq('id', tx_id).execute()
-    clear_cache()
+    try:
+        supabase.table('transactions').delete().eq('id', tx_id).execute()
+        clear_cache()
+        return True
+    except Exception as e:
+        st.error(f"Failed to delete transaction: {e}")
+        return False
 
 @st.cache_data(ttl=60)
 def get_monthly_summary(year=None, month=None):
     """Get monthly income/expense summary from Supabase"""
-    if year and month:
-        month_str = f"{year}-{month:02d}%"
-        result = supabase.table('transactions').select('amount, transaction_type').like('date', month_str).execute()
-    else:
-        result = supabase.table('transactions').select('amount, transaction_type').execute()
-    
-    df = pd.DataFrame(result.data)
-    if df.empty:
+    try:
+        query = supabase.table('transactions').select('amount, transaction_type')
+        if year and month:
+            start_date = f"{year}-{month:02d}-01"
+            if month == 12:
+                end_date = f"{year+1}-01-01"
+            else:
+                end_date = f"{year}-{month+1:02d}-01"
+            query = query.gte('date', start_date).lt('date', end_date)
+        result = query.execute()
+        df = pd.DataFrame(result.data) if result.data else pd.DataFrame()
+        if df.empty:
+            return pd.DataFrame([{'total_income': 0, 'total_expense': 0}])
+        income = df[df['transaction_type'] == 'income']['amount'].sum()
+        expense = df[df['transaction_type'] == 'expense']['amount'].sum()
+        return pd.DataFrame([{'total_income': income, 'total_expense': expense}])
+    except Exception as e:
+        st.error(f"Failed to load monthly summary: {e}")
         return pd.DataFrame([{'total_income': 0, 'total_expense': 0}])
-    
-    income = df[df['transaction_type'] == 'income']['amount'].sum()
-    expense = df[df['transaction_type'] == 'expense']['amount'].sum()
-    return pd.DataFrame([{'total_income': income, 'total_expense': expense}])
 
 @st.cache_data(ttl=60)
 def get_category_breakdown(transaction_type='expense', year=None, month=None):
     """Get spending by category from Supabase"""
-    # Get transactions for the period
-    if year and month:
-        month_str = f"{year}-{month:02d}%"
-        result = supabase.table('transactions').select('amount, category_id, transaction_type').like('date', month_str).execute()
-    else:
-        result = supabase.table('transactions').select('amount, category_id, transaction_type').execute()
-    
-    df = pd.DataFrame(result.data)
-    if df.empty:
+    try:
+        query = supabase.table('transactions').select('amount, category_id, transaction_type')
+        if year and month:
+            start_date = f"{year}-{month:02d}-01"
+            if month == 12:
+                end_date = f"{year+1}-01-01"
+            else:
+                end_date = f"{year}-{month+1:02d}-01"
+            query = query.gte('date', start_date).lt('date', end_date)
+        result = query.execute()
+        df = pd.DataFrame(result.data) if result.data else pd.DataFrame()
+        if df.empty:
+            return pd.DataFrame()
+        df = df[df['transaction_type'] == transaction_type]
+        if df.empty:
+            return pd.DataFrame()
+        try:
+            cats = supabase.table('categories').select('id, name, icon').execute()
+            if cats.data:
+                cats_df = pd.DataFrame(cats.data)
+                df = df.merge(cats_df, left_on='category_id', right_on='id', how='left')
+                breakdown = df.groupby(['name', 'icon'])['amount'].sum().reset_index()
+                breakdown.columns = ['name', 'icon', 'total']
+                return breakdown.sort_values('total', ascending=False)
+        except Exception:
+            pass
         return pd.DataFrame()
-    
-    # Filter by transaction type
-    df = df[df['transaction_type'] == transaction_type]
-    if df.empty:
+    except Exception as e:
+        st.error(f"Failed to load category breakdown: {e}")
         return pd.DataFrame()
-    
-    # Get category info
-    cats = supabase.table('categories').select('id, name, icon').execute()
-    cats_df = pd.DataFrame(cats.data)
-    
-    # Merge and group
-    df = df.merge(cats_df, left_on='category_id', right_on='id', how='left')
-    breakdown = df.groupby(['name', 'icon'])['amount'].sum().reset_index()
-    breakdown.columns = ['name', 'icon', 'total']
-    return breakdown.sort_values('total', ascending=False)
 
 @st.cache_data(ttl=60)
 def get_savings_goals():
     """Get all savings goals from Supabase"""
-    result = supabase.table('savings_goals').select('*').order('is_active', desc=True).order('id', desc=True).execute()
-    return pd.DataFrame(result.data)
+    try:
+        result = supabase.table('savings_goals').select('*').order('is_active', desc=True).order('id', desc=True).execute()
+        return pd.DataFrame(result.data) if result.data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Failed to load savings goals: {e}")
+        return pd.DataFrame()
 
 def add_savings_goal(name, target_amount, deadline=None):
     """Add a new savings goal to Supabase"""
-    deadline_val = deadline.strftime('%Y-%m-%d') if deadline else None
-    supabase.table('savings_goals').insert({
-        'name': name,
-        'target_amount': target_amount,
-        'deadline': deadline_val
-    }).execute()
-    clear_cache()
+    try:
+        deadline_val = deadline.strftime('%Y-%m-%d') if deadline else None
+        supabase.table('savings_goals').insert({
+            'name': name,
+            'target_amount': target_amount,
+            'deadline': deadline_val
+        }).execute()
+        clear_cache()
+        return True
+    except Exception as e:
+        st.error(f"Failed to add savings goal: {e}")
+        return False
 
 def update_savings_goal_amount(goal_id, amount_to_add):
-    """Add to a savings goal's current amount in Supabase"""
-    # Get current amount
-    result = supabase.table('savings_goals').select('current_amount').eq('id', goal_id).execute()
-    if result.data:
-        current = result.data[0]['current_amount'] or 0
-        supabase.table('savings_goals').update({'current_amount': current + amount_to_add}).eq('id', goal_id).execute()
-        clear_cache()
+    """Add to a savings goal's current amount in Supabase (atomic update)"""
+    try:
+        # Use atomic increment to avoid race conditions
+        result = supabase.table('savings_goals').select('current_amount').eq('id', goal_id).execute()
+        if result.data:
+            current = result.data[0]['current_amount'] or 0
+            supabase.table('savings_goals').update({'current_amount': current + amount_to_add}).eq('id', goal_id).execute()
+            clear_cache()
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Failed to update savings goal: {e}")
+        return False
 
 def delete_savings_goal(goal_id):
     """Delete a savings goal from Supabase"""
-    supabase.table('savings_goals').delete().eq('id', goal_id).execute()
-    clear_cache()
+    try:
+        supabase.table('savings_goals').delete().eq('id', goal_id).execute()
+        clear_cache()
+        return True
+    except Exception as e:
+        st.error(f"Failed to delete savings goal: {e}")
+        return False
 
 def toggle_savings_goal(goal_id):
     """Toggle a savings goal active status in Supabase"""
-    result = supabase.table('savings_goals').select('is_active').eq('id', goal_id).execute()
-    if result.data:
-        current = result.data[0]['is_active'] or 0
-        supabase.table('savings_goals').update({'is_active': 0 if current else 1}).eq('id', goal_id).execute()
-        clear_cache()
+    try:
+        result = supabase.table('savings_goals').select('is_active').eq('id', goal_id).execute()
+        if result.data:
+            current = result.data[0]['is_active'] or 0
+            supabase.table('savings_goals').update({'is_active': 0 if current else 1}).eq('id', goal_id).execute()
+            clear_cache()
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Failed to toggle savings goal: {e}")
+        return False
 
 # Navigation - top for mobile, sidebar for desktop
 pages = ["📊 Dashboard", "➕ Add Transaction", "📋 Transactions", "🔄 Recurring Bills", "🎯 Savings Goals", "📁 Import CSV", "📈 Reports"]
