@@ -78,12 +78,16 @@
   }
   
   async function loadCharts() {
+    // Prevent multiple simultaneous chart loads
+    if (chartsInitialized) return;
+    
     // Make sure canvas elements exist
     if (!pieChartCanvas || !barChartCanvas) {
-      console.log('Canvas elements not ready, retrying...');
-      setTimeout(loadCharts, 100);
+      console.log('Canvas elements not ready');
       return;
     }
+    
+    chartsInitialized = true;
     
     // Destroy existing charts
     if (pieChart) {
