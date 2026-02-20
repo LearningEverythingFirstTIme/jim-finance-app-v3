@@ -3,7 +3,9 @@
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase';
   
-  let email = '';
+  // Hardcoded email for Jim - only password is needed
+  const JIM_EMAIL = 'jim@finance.app';
+  
   let password = '';
   let loading = false;
   let error = '';
@@ -20,7 +22,7 @@
     error = '';
     
     const { error: authError } = await supabase.auth.signInWithPassword({
-      email,
+      email: JIM_EMAIL,
       password
     });
     
@@ -43,7 +45,7 @@
     <div class="login-header">
       <div class="logo">💰</div>
       <h1>Jim's Finance Tracker</h1>
-      <p>Sign in to manage your finances</p>
+      <p>Enter your password to access your finances</p>
     </div>
     
     {#if error}
@@ -51,18 +53,6 @@
     {/if}
     
     <form on:submit|preventDefault={handleLogin}>
-      <div class="form-group">
-        <label for="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          class="input"
-          bind:value={email}
-          placeholder="your@email.com"
-          required
-        />
-      </div>
-      
       <div class="form-group">
         <label for="password">Password</label>
         <input
