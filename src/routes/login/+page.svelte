@@ -41,7 +41,7 @@
 </svelte:head>
 
 <div class="login-page">
-  <div class="login-container animate-fade-in">
+  <div class="login-container">
     <div class="login-header">
       <div class="logo">💰</div>
       <h1>Jim's Finance</h1>
