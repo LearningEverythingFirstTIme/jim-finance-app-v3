@@ -10,21 +10,18 @@
     { path: '/import', label: 'Import', icon: '📁' },
     { path: '/reports', label: 'Reports', icon: '📈' }
   ];
-  
-  $: currentPath = $page.url.pathname;
-  $: isLoginPage = currentPath === '/login';
 </script>
 
 <div class="app">
   <slot />
   
-  {#if !isLoginPage}
+  {#if $page.url.pathname !== '/login'}
     <nav class="bottom-nav">
       {#each navItems as item}
         <a 
           href={item.path} 
           class="nav-item"
-          class:active={currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path))}
+          class:active={$page.url.pathname === item.path || (item.path !== '/' && $page.url.pathname.startsWith(item.path))}
         >
           <span class="nav-icon">{item.icon}</span>
           {item.label}
