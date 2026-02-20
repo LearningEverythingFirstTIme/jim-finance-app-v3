@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import Chart from 'chart.js/auto';
   import { getMonthlySummary, getCategoryBreakdown } from '$lib/api';
   
@@ -12,8 +12,8 @@
   
   let barChartCanvas: HTMLCanvasElement;
   let categoryChartCanvas: HTMLCanvasElement;
-  let barChart: Chart;
-  let categoryChart: Chart;
+  let barChart: Chart | null = null;
+  let categoryChart: Chart | null = null;
   
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
   
@@ -44,7 +44,9 @@
       // Load category breakdown
       categoryData = await getCategoryBreakdown('expense', selectedYear);
       
-      renderCharts();
+      // Wait for DOM then render charts
+      await tick();
+      await renderCharts();
     } catch (e: any) {
       error = e.message;
     } finally {
@@ -52,58 +54,122 @@
     }
   }
   
-  function renderCharts() {
-    // Monthly trend chart
-    if (barChart) barChart.destroy();
-    barChart = new Chart(barChartCanvas, {
-      type: 'bar',
-      data: {
-        labels: monthlyData.map(d => d.month),
-        datasets: [
-          {
-            label: 'Income',
-            data: monthlyData.map(d => d.income),
-            backgroundColor: '#22c55e'
-          },
-          {
-            label: 'Expenses',
-            data: monthlyData.map(d => d.expense),
-            backgroundColor: '#ef4444'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            labels: { color: '#f8fafc' }
-          }
+  async function renderCharts() {
+    if (!barChartCanvas || !categoryChartCanvas) {
+      setTimeout(renderCharts, 100);
+      return;
+    }
+    
+    // Destroy existing charts
+    if (barChart) {
+      barChart.destroy();
+      barChart = null;
+    }
+    if (categoryChart) {
+      categoryChart.destroy();
+      categoryChart = null;
+    }
+    
+    const barCtx = barChartCanvas.getContext('2d');
+    if (barCtx) {
+      // Create gradients
+      const incomeGradient = barCtx.createLinearGradient(0, 0, 0, 300);
+      incomeGradient.addColorStop(0, '#10b981');
+      incomeGradient.addColorStop(1, '#059669');
+      
+      const expenseGradient = barCtx.createLinearGradient(0, 0, 0, 300);
+      expenseGradient.addColorStop(0, '#f43f5e');
+      expenseGradient.addColorStop(1, '#e11d48');
+      
+      barChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: monthlyData.map(d => d.month),
+          datasets: [
+            {
+              label: 'Income',
+              data: monthlyData.map(d => d.income),
+              backgroundColor: incomeGradient,
+              borderRadius: 6,
+              borderSkipped: false
+            },
+            {
+              label: 'Expenses',
+              data: monthlyData.map(d => d.expense),
+              backgroundColor: expenseGradient,
+              borderRadius: 6,
+              borderSkipped: false
+            }
+          ]
         },
-        scales: {
-          x: {
-            ticks: { color: '#94a3b8' },
-            grid: { color: '#334155' }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'end',
+              labels: { 
+                color: '#94a3b8', 
+                font: { size: 12, family: 'Inter' },
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 20
+              }
+            },
+            tooltip: {
+              backgroundColor: '#1e293b',
+              titleColor: '#f8fafc',
+              bodyColor: '#94a3b8',
+              borderColor: '#334155',
+              borderWidth: 1,
+              padding: 12,
+              callbacks: {
+                label: (context) => ` ${context.dataset.label}: $${context.parsed.y.toLocaleString()}`
+              }
+            }
           },
-          y: {
-            ticks: { color: '#94a3b8' },
-            grid: { color: '#334155' }
+          scales: {
+            x: {
+              ticks: { 
+                color: '#64748b', 
+                font: { size: 12, family: 'Inter' }
+              },
+              grid: { display: false }
+            },
+            y: {
+              ticks: { 
+                color: '#64748b', 
+                font: { size: 11, family: 'Inter' },
+                callback: (value) => `$${(value as number / 1000).toFixed(0)}k`
+              },
+              grid: { 
+                color: '#1f2937',
+                drawBorder: false
+              }
+            }
           }
         }
-      }
-    });
+      });
+    }
     
     // Category breakdown chart
-    if (categoryChart) categoryChart.destroy();
-    if (categoryData.length > 0) {
-      categoryChart = new Chart(categoryChartCanvas, {
+    const catCtx = categoryChartCanvas.getContext('2d');
+    if (catCtx && categoryData.length > 0) {
+      const catGradient = catCtx.createLinearGradient(0, 0, 300, 0);
+      catGradient.addColorStop(0, '#3b82f6');
+      catGradient.addColorStop(1, '#60a5fa');
+      
+      categoryChart = new Chart(catCtx, {
         type: 'bar',
         data: {
           labels: categoryData.slice(0, 10).map(d => `${d.icon} ${d.name}`),
           datasets: [{
             label: 'Spending',
             data: categoryData.slice(0, 10).map(d => d.total),
-            backgroundColor: '#3b82f6'
+            backgroundColor: catGradient,
+            borderRadius: 4,
+            borderSkipped: false
           }]
         },
         options: {
@@ -111,15 +177,36 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false }
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1e293b',
+              titleColor: '#f8fafc',
+              bodyColor: '#94a3b8',
+              borderColor: '#334155',
+              borderWidth: 1,
+              padding: 12,
+              callbacks: {
+                label: (context) => ` $${context.parsed.x.toLocaleString()}`
+              }
+            }
           },
           scales: {
             x: {
-              ticks: { color: '#94a3b8' },
-              grid: { color: '#334155' }
+              ticks: { 
+                color: '#64748b', 
+                font: { size: 11, family: 'Inter' },
+                callback: (value) => `$${(value as number / 1000).toFixed(0)}k`
+              },
+              grid: { 
+                color: '#1f2937',
+                drawBorder: false
+              }
             },
             y: {
-              ticks: { color: '#f8fafc' },
+              ticks: { 
+                color: '#f8fafc',
+                font: { size: 12, family: 'Inter' }
+              },
               grid: { display: false }
             }
           }
@@ -135,35 +222,41 @@
   function formatCurrency(amount: number): string {
     return amount.toLocaleString('en-US', { 
       style: 'currency', 
-      currency: 'USD' 
+      currency: 'USD',
+      maximumFractionDigits: 0
     });
   }
 </script>
 
 <svelte:head>
-  <title>Reports - Jim's Finance Tracker</title>
+  <title>Reports - Jim's Finance</title>
 </svelte:head>
 
 <div class="page">
-  <h1 class="page-title">📈 Reports</h1>
+  <header class="page-header">
+    <h1 class="page-title">Reports</h1>
+    <p class="page-subtitle">Annual financial overview</p>
+  </header>
   
   {#if loading}
-    <div class="loading">Loading reports...⏳</div>
+    <div class="loading">Loading reports...</div>
   {:else if error}
     <div class="error">{error}</div>
   {:else}
     <!-- Year Selector -->
-    <div class="card">
-      <label>Select Year</label>
-      <select class="input" bind:value={selectedYear} on:change={loadData}>
-        {#each years as year}
-          <option value={year}>{year}</option>
-        {/each}
-      </select>
+    <div class="card animate-fade-in">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label>Select Year</label>
+        <select class="input" bind:value={selectedYear} on:change={loadData}>
+          {#each years as year}
+            <option value={year}>{year}</option>
+          {/each}
+        </select>
+      </div>
     </div>
     
     <!-- Annual Summary -->
-    <div class="metric-grid">
+    <div class="metric-grid animate-fade-in stagger-1">
       <div class="metric-card">
         <div class="metric-label">Total Income</div>
         <div class="metric-value income">{formatCurrency(totalIncome)}</div>
@@ -182,9 +275,38 @@
       </div>
     </div>
     
+    <!-- Monthly Trend Chart -->
+    <div class="card chart-container animate-fade-in stagger-2">
+      <div class="card-header">
+        <h3 class="card-title">📈 Monthly Trend</h3>
+      </div>
+      <div class="chart-wrapper chart-wrapper-lg">
+        <canvas bind:this={barChartCanvas}></canvas>
+      </div>
+    </div>
+    
+    <!-- Category Breakdown Chart -->
+    <div class="card chart-container animate-fade-in stagger-3">
+      <div class="card-header">
+        <h3 class="card-title">💳 Top Spending Categories</h3>
+      </div>
+      {#if categoryData.length > 0}
+        <div class="chart-wrapper">
+          <canvas bind:this={categoryChartCanvas}></canvas>
+        </div>
+      {:else}
+        <div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <p>No expense data for this year</p>
+        </div>
+      {/if}
+    </div>
+    
     <!-- Monthly Breakdown Table -->
-    <div class="card">
-      <h3>Monthly Summary for {selectedYear}</h3>
+    <div class="card animate-fade-in stagger-4">
+      <div class="card-header">
+        <h3 class="card-title">📋 Monthly Summary</h3>
+      </div>
       
       <div class="table-container">
         <table>
@@ -211,35 +333,15 @@
         </table>
       </div>
     </div>
-    
-    <!-- Charts -->
-    <div class="chart-container">
-      <h3>Monthly Trend</h3>
-      <canvas bind:this={barChartCanvas}></canvas>
-    </div>
-    
-    <div class="chart-container">
-      <h3>Top Spending Categories</h3>
-      {#if categoryData.length > 0}
-        <canvas bind:this={categoryChartCanvas}></canvas>
-      {:else}
-        <p class="empty-state">No expense data for this year</p>
-      {/if}
-    </div>
   {/if}
 </div>
 
 <style>
-  .chart-container h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-  }
-  
   td.income {
-    color: #22c55e;
+    color: var(--color-income);
   }
   
   td.expense {
-    color: #ef4444;
+    color: var(--color-expense);
   }
 </style>

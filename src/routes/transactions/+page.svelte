@@ -66,26 +66,35 @@
   function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString('en-US', {
       month: 'short',
-      day: 'numeric',
-      year: 'numeric'
+      day: 'numeric'
+    });
+  }
+  
+  function formatCurrency(amount: number): string {
+    return amount.toLocaleString('en-US', { 
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
     });
   }
 </script>
 
 <svelte:head>
-  <title>Transactions - Jim's Finance Tracker</title>
+  <title>Transactions - Jim's Finance</title>
 </svelte:head>
 
 <div class="page">
-  <h1 class="page-title">📋 Transactions</h1>
+  <header class="page-header">
+    <h1 class="page-title">Transaction History</h1>
+    <p class="page-subtitle">{filteredTransactions.length} transactions</p>
+  </header>
   
   {#if loading}
-    <div class="loading">Loading transactions...⏳</div>
+    <div class="loading">Loading transactions...</div>
   {:else if error}
     <div class="error">{error}</div>
   {:else}
     <!-- Filters -->
-    <div class="filter-row">
+    <div class="filter-row animate-fade-in">
       <select class="input" bind:value={filterType}>
         <option value="all">All Types</option>
         <option value="income">💵 Income</option>
@@ -93,7 +102,7 @@
       </select>
       
       <select class="input" bind:value={filterMonth}>
-        <option value="all">All Months</option>
+        <option value="all">All Time</option>
         {#each months as month}
           <option value={month.value}>{month.label}</option>
         {/each}
@@ -102,14 +111,16 @@
     
     <!-- Transaction List -->
     {#if filteredTransactions.length === 0}
-      <div class="empty-state">
-        No transactions found. <a href="/add">Add one</a> to get started!
+      <div class="empty-state animate-fade-in">
+        <div class="empty-state-icon">📋</div>
+        <p>No transactions found.</p>
+        <a href="/add" class="btn btn-primary" style="margin-top: 1rem;">Add Transaction</a>
       </div>
     {:else}
       <div class="transactions-list">
-        {#each filteredTransactions as tx}
+        {#each filteredTransactions as tx, i}
           {@const cat = getCategory(tx.category_id)}
-          <div class="transaction-item">
+          <div class="transaction-item animate-fade-in" style="animation-delay: {i * 0.03}s">
             <div class="transaction-info">
               <div class="transaction-icon">
                 {cat?.icon || '❓'}
@@ -127,7 +138,7 @@
                 class:expense={tx.transaction_type === 'expense'}
               >
                 {tx.transaction_type === 'income' ? '+' : '-'}
-                ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                ${formatCurrency(tx.amount)}
               </span>
               
               {#if deleteConfirmId === tx.id}
@@ -150,27 +161,7 @@
   .transactions-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-  }
-  
-  .transaction-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  
-  .delete-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.25rem;
-    padding: 0.25rem;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-  }
-  
-  .delete-btn:hover {
-    opacity: 1;
+    gap: 0.625rem;
   }
   
   .delete-confirm {
@@ -178,17 +169,8 @@
     gap: 0.25rem;
   }
   
-  .btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-  }
-  
   .empty-state a {
-    color: #3b82f6;
+    color: var(--color-primary);
     text-decoration: none;
-  }
-  
-  .empty-state a:hover {
-    text-decoration: underline;
   }
 </style>

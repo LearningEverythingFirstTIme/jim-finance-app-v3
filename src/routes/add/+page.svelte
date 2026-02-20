@@ -11,7 +11,7 @@
   
   let date = new Date().toISOString().split('T')[0];
   let amount = '';
-  let transactionType: 'income' | 'expense' = 'expense';
+  let transactionType: 'expense' | 'income' = 'expense';
   let categoryId: number | null = null;
   let notes = '';
   let categories: Category[] = [];
@@ -61,7 +61,7 @@
       // Redirect after a short delay
       setTimeout(() => {
         goto('/');
-      }, 1500);
+      }, 1200);
     } catch (e: any) {
       error = e.message;
     } finally {
@@ -71,14 +71,17 @@
 </script>
 
 <svelte:head>
-  <title>Add Transaction - Jim's Finance Tracker</title>
+  <title>Add Transaction - Jim's Finance</title>
 </svelte:head>
 
 <div class="page">
-  <h1 class="page-title">➕ Add Transaction</h1>
+  <header class="page-header">
+    <h1 class="page-title">Add Transaction</h1>
+    <p class="page-subtitle">Record a new income or expense</p>
+  </header>
   
   {#if loading}
-    <div class="loading">Loading...⏳</div>
+    <div class="loading">Loading...</div>
   {:else}
     {#if error}
       <div class="error">{error}</div>
@@ -88,77 +91,83 @@
       <div class="success">{success} ✅</div>
     {/if}
     
-    <form on:submit|preventDefault={handleSubmit}>
-      <div class="form-group">
-        <label>Transaction Type</label>
-        <div class="type-selector">
-          <button
-            type="button"
-            class="type-btn"
-            class:active={transactionType === 'expense'}
-            on:click={() => transactionType = 'expense'}
-          >
-            💸 Expense
-          </button>
-          <button
-            type="button"
-            class="type-btn"
-            class:active={transactionType === 'income'}
-            on:click={() => transactionType = 'income'}
-          >
-            💵 Income
-          </button>
+    <form on:submit|preventDefault={handleSubmit} class="animate-fade-in">
+      <div class="card">
+        <div class="form-group">
+          <label>Transaction Type</label>
+          <div class="type-selector">
+            <button
+              type="button"
+              class="type-btn"
+              class:active={transactionType === 'expense'}
+              class:expense-type={transactionType === 'expense'}
+              on:click={() => transactionType = 'expense'}
+            >
+              💸 Expense
+            </button>
+            <button
+              type="button"
+              class="type-btn"
+              class:active={transactionType === 'income'}
+              class:income-type={transactionType === 'income'}
+              on:click={() => transactionType = 'income'}
+            >
+              💵 Income
+            </button>
+          </div>
         </div>
       </div>
       
-      <div class="form-row">
-        <div class="form-group">
-          <label for="date">Date</label>
-          <input
-            id="date"
-            type="date"
-            class="input"
-            bind:value={date}
-            required
-          />
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="date">Date</label>
+            <input
+              id="date"
+              type="date"
+              class="input"
+              bind:value={date}
+              required
+            />
+          </div>
+          
+          <div class="form-group">
+            <label for="amount">Amount</label>
+            <input
+              id="amount"
+              type="number"
+              class="input"
+              bind:value={amount}
+              placeholder="0.00"
+              step="0.01"
+              min="0.01"
+              required
+            />
+          </div>
         </div>
         
         <div class="form-group">
-          <label for="amount">Amount</label>
+          <label for="category">Category</label>
+          <select id="category" class="input" bind:value={categoryId} required>
+            {#each filteredCategories as cat}
+              <option value={cat.id}>{cat.icon} {cat.name}</option>
+            {/each}
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label for="notes">Notes (optional)</label>
           <input
-            id="amount"
-            type="number"
+            id="notes"
+            type="text"
             class="input"
-            bind:value={amount}
-            placeholder="0.00"
-            step="0.01"
-            min="0.01"
-            required
+            bind:value={notes}
+            placeholder="Add a note..."
           />
         </div>
       </div>
       
-      <div class="form-group">
-        <label for="category">Category</label>
-        <select id="category" class="input" bind:value={categoryId} required>
-          {#each filteredCategories as cat}
-            <option value={cat.id}>{cat.icon} {cat.name}</option>
-          {/each}
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label for="notes">Notes (optional)</label>
-        <input
-          id="notes"
-          type="text"
-          class="input"
-          bind:value={notes}
-          placeholder="Add a note..."
-        />
-      </div>
-      
-      <button type="submit" class="btn btn-success" disabled={saving || !amount}>
+      <button type="submit" class="btn btn-success btn-lg" disabled={saving || !amount}>
         {saving ? 'Saving...' : '➕ Add Transaction'}
       </button>
     </form>
@@ -166,40 +175,13 @@
 </div>
 
 <style>
-  .type-selector {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-  }
-  
-  .type-btn {
-    padding: 1rem;
-    border-radius: 0.5rem;
-    border: 2px solid #334155;
-    background-color: #0f172a;
-    color: #94a3b8;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  
-  .type-btn.active {
-    border-color: #3b82f6;
-    background-color: rgba(59, 130, 246, 0.1);
-    color: #f8fafc;
-  }
-  
-  .success {
-    background-color: rgba(34, 197, 94, 0.1);
-    border: 1px solid #22c55e;
-    color: #22c55e;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
   }
   
   button[type="submit"] {
     width: 100%;
-    margin-top: 1rem;
   }
 </style>

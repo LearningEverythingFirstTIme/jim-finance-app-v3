@@ -135,11 +135,14 @@
 </script>
 
 <svelte:head>
-  <title>Import CSV - Jim's Finance Tracker</title>
+  <title>Import CSV - Jim's Finance</title>
 </svelte:head>
 
 <div class="page">
-  <h1 class="page-title">📁 Import CSV</h1>
+  <header class="page-header">
+    <h1 class="page-title">Import CSV</h1>
+    <p class="page-subtitle">Import transactions from your bank</p>
+  </header>
   
   {#if error}
     <div class="error">{error}</div>
@@ -149,13 +152,12 @@
     <div class="success">{success}</div>
   {/if}
   
-  <div class="card">
-    <p class="description">
-      Upload a bank CSV export to import transactions. 
-      The app will auto-detect columns and categorize based on descriptions.
+  <div class="card animate-fade-in">
+    <p style="color: var(--color-text-secondary); margin-top: 0; margin-bottom: var(--space-md);">
+      Upload a bank CSV export. The app will auto-detect columns and categorize based on descriptions.
     </p>
     
-    <div class="file-input">
+    <div class="file-input-wrapper">
       <input
         type="file"
         accept=".csv"
@@ -163,18 +165,23 @@
         id="csv-file"
       />
       <label for="csv-file" class="file-label">
-        {#if file}
-          📄 {file.name}
-        {:else}
-          📁 Choose CSV File
-        {/if}
+        <span class="file-label-icon">📁</span>
+        <span class="file-label-text">
+          {#if file}
+            <strong>{file.name}</strong>
+          {:else}
+            <strong>Click to upload</strong> or drag and drop
+          {/if}
+        </span>
       </label>
     </div>
   </div>
   
   {#if columns.length > 0}
-    <div class="card mapping-card">
-      <h3>📋 Column Mapping</h3>
+    <div class="card mapping-card animate-fade-in stagger-1">
+      <div class="card-header">
+        <h3 class="card-title">📋 Column Mapping</h3>
+      </div>
       
       <div class="form-row">
         <div class="form-group">
@@ -196,7 +203,7 @@
         </div>
       </div>
       
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom: 0;">
         <label>Description Column</label>
         <select class="input" bind:value={descColumn}>
           {#each columns as col}
@@ -207,8 +214,10 @@
     </div>
     
     {#if previewData.length > 0}
-      <div class="card preview-card">
-        <h3>👀 Preview (First 5 rows)</h3>
+      <div class="card preview-card animate-fade-in stagger-2">
+        <div class="card-header">
+          <h3 class="card-title">👀 Preview (First 5 rows)</h3>
+        </div>
         
         <div class="table-container">
           <table>
@@ -235,64 +244,23 @@
       </div>
     {/if}
     
-    <button class="btn btn-success import-btn" on:click={handleImport} disabled={loading}>
+    <button class="btn btn-success import-btn animate-fade-in stagger-3" on:click={handleImport} disabled={loading}>
       {loading ? 'Importing...' : `📥 Import ${csvData.length} Transactions`}
     </button>
   {/if}
 </div>
 
 <style>
-  .description {
-    color: #94a3b8;
-    margin-top: 0;
-  }
-  
-  .file-input {
-    position: relative;
-  }
-  
-  .file-input input {
-    position: absolute;
-    opacity: 0;
-    width: 100%;
-    height: 100%;
-    cursor: pointer;
-  }
-  
-  .file-label {
-    display: block;
-    padding: 2rem;
-    border: 2px dashed #334155;
-    border-radius: 0.75rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  
-  .file-label:hover {
-    border-color: #3b82f6;
-    background-color: rgba(59, 130, 246, 0.05);
-  }
-  
-  .mapping-card h3,
-  .preview-card h3 {
-    margin-top: 0;
+  .mapping-card,
+  .preview-card {
+    margin-bottom: var(--space-lg);
   }
   
   .preview-card td.expense {
-    color: #ef4444;
+    color: var(--color-expense);
   }
   
   .import-btn {
     width: 100%;
-  }
-  
-  .success {
-    background-color: rgba(34, 197, 94, 0.1);
-    border: 1px solid #22c55e;
-    color: #22c55e;
-    padding: 1rem;
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
   }
 </style>

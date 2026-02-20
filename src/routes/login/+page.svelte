@@ -37,22 +37,22 @@
 </script>
 
 <svelte:head>
-  <title>Login - Jim's Finance Tracker</title>
+  <title>Sign In - Jim's Finance</title>
 </svelte:head>
 
 <div class="login-page">
-  <div class="login-container">
+  <div class="login-container animate-fade-in">
     <div class="login-header">
       <div class="logo">💰</div>
-      <h1>Jim's Finance Tracker</h1>
-      <p>Enter your password to access your finances</p>
+      <h1>Jim's Finance</h1>
+      <p>Enter your password to continue</p>
     </div>
     
     {#if error}
       <div class="error">{error}</div>
     {/if}
     
-    <form on:submit|preventDefault={handleLogin}>
+    <form on:submit|preventDefault={handleLogin} class="login-form">
       <div class="form-group">
         <label for="password">Password</label>
         <input
@@ -65,65 +65,9 @@
         />
       </div>
       
-      <button type="submit" class="btn btn-primary" disabled={loading}>
+      <button type="submit" class="btn btn-primary btn-lg" disabled={loading}>
         {loading ? 'Signing in...' : 'Sign In'}
       </button>
     </form>
   </div>
 </div>
-
-<style>
-  .login-page {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-  }
-  
-  .login-container {
-    width: 100%;
-    max-width: 360px;
-    background-color: #1e293b;
-    border-radius: 1rem;
-    padding: 2rem;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  }
-  
-  .login-header {
-    text-align: center;
-    margin-bottom: 2rem;
-  }
-  
-  .logo {
-    font-size: 3rem;
-    margin-bottom: 0.5rem;
-  }
-  
-  .login-header h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.5rem;
-  }
-  
-  .login-header p {
-    margin: 0;
-    color: #94a3b8;
-    font-size: 0.9rem;
-  }
-  
-  form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  button {
-    margin-top: 0.5rem;
-  }
-  
-  button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-</style>

@@ -3,9 +3,9 @@
   import { page } from '$app/stores';
   
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: '📊' },
+    { path: '/', label: 'Home', icon: '📊' },
     { path: '/add', label: 'Add', icon: '➕' },
-    { path: '/transactions', label: 'Trans', icon: '📋' },
+    { path: '/transactions', label: 'History', icon: '📋' },
     { path: '/bills', label: 'Bills', icon: '🔄' },
     { path: '/import', label: 'Import', icon: '📁' },
     { path: '/reports', label: 'Reports', icon: '📈' }
@@ -24,7 +24,7 @@
         class="nav-item"
         class:active={currentPath === item.path || (item.path !== '/' && currentPath.startsWith(item.path))}
       >
-        <span>{item.icon}</span>
+        <span class="nav-icon">{item.icon}</span>
         {item.label}
       </a>
     {/each}

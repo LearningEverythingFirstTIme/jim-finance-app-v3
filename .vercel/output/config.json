@@ -1,0 +1,65 @@
+{
+	"version": 3,
+	"routes": [
+		{
+			"src": ".*",
+			"continue": true,
+			"transforms": [
+				{
+					"type": "request.query",
+					"op": "delete",
+					"target": {
+						"key": "__pathname"
+					}
+				}
+			]
+		},
+		{
+			"src": "/_app/immutable/.+",
+			"headers": {
+				"cache-control": "public, immutable, max-age=31536000"
+			}
+		},
+		{
+			"handle": "filesystem"
+		},
+		{
+			"src": "/_app/immutable/.+",
+			"status": 404,
+			"continue": false
+		},
+		{
+			"src": "^/?(?:/__data.json)?$",
+			"dest": "/"
+		},
+		{
+			"src": "^/add/?(?:/__data.json)?$",
+			"dest": "/add"
+		},
+		{
+			"src": "^/bills/?(?:/__data.json)?$",
+			"dest": "/bills"
+		},
+		{
+			"src": "^/import/?(?:/__data.json)?$",
+			"dest": "/import"
+		},
+		{
+			"src": "^/login/?(?:/__data.json)?$",
+			"dest": "/login"
+		},
+		{
+			"src": "^/reports/?(?:/__data.json)?$",
+			"dest": "/reports"
+		},
+		{
+			"src": "^/transactions/?(?:/__data.json)?$",
+			"dest": "/transactions"
+		},
+		{
+			"src": "/.*",
+			"dest": "/![-]/catchall"
+		}
+	],
+	"overrides": {}
+}

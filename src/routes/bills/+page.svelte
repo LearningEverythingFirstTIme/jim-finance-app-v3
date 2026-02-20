@@ -87,29 +87,44 @@
       error = e.message;
     }
   }
+  
+  function formatCurrency(amount: number): string {
+    return amount.toLocaleString('en-US', { 
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    });
+  }
 </script>
 
 <svelte:head>
-  <title>Recurring Bills - Jim's Finance Tracker</title>
+  <title>Recurring Bills - Jim's Finance</title>
 </svelte:head>
 
 <div class="page">
-  <h1 class="page-title">🔄 Recurring Bills</h1>
+  <header class="page-header">
+    <h1 class="page-title">Recurring Bills</h1>
+    <p class="page-subtitle">Track your monthly subscriptions & bills</p>
+  </header>
   
   {#if loading}
-    <div class="loading">Loading bills...⏳</div>
+    <div class="loading">Loading bills...</div>
   {:else if error}
     <div class="error">{error}</div>
   {:else}
     <!-- Add Button -->
-    <button class="btn btn-primary add-btn" on:click={() => showAddForm = !showAddForm}>
+    <button 
+      class="btn {showAddForm ? 'btn-secondary' : 'btn-primary'} add-btn animate-fade-in" 
+      on:click={() => showAddForm = !showAddForm}
+    >
       {showAddForm ? '✕ Cancel' : '➕ Add New Bill'}
     </button>
     
     <!-- Add Form -->
     {#if showAddForm}
-      <div class="card add-form">
-        <h3>Add New Bill</h3>
+      <div class="card add-form animate-fade-in">
+        <div class="card-header">
+          <h3 class="card-title">New Recurring Bill</h3>
+        </div>
         
         <div class="form-group">
           <label>Bill Name</label>
@@ -163,16 +178,20 @@
     
     <!-- Bills List -->
     {#if bills.length === 0}
-      <div class="empty-state">No recurring bills yet. Add one above!</div>
+      <div class="empty-state animate-fade-in">
+        <div class="empty-state-icon">🔄</div>
+        <p>No recurring bills yet.</p>
+        <p style="color: var(--color-text-muted); font-size: 0.875rem;">Add your subscriptions and monthly bills to track them.</p>
+      </div>
     {:else}
       <div class="bills-list">
-        {#each bills as bill}
+        {#each bills as bill, i}
           {@const cat = getCategory(bill.category_id)}
           
-          <div class="bill-card" class:inactive={bill.is_active === 0}>
+          <div class="bill-card" class:inactive={bill.is_active === 0} style="animation-delay: {i * 0.05}s">
             <div class="bill-header">
               <div class="bill-title">
-                <span class="bill-icon">{cat?.icon || '📦'}</span>
+                <div class="bill-icon">{cat?.icon || '📦'}</div>
                 <div>
                   <h4>{bill.name}</h4>
                   <span class="bill-category">{cat?.name || 'Unknown'}</span>
@@ -180,12 +199,14 @@
               </div>
               
               <div class="bill-amount">
-                ${bill.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                ${formatCurrency(bill.amount)}
               </div>
             </div>
             
             <div class="bill-footer">
-              <span class="due-day">📅 Due on the {bill.due_day}{['st','nd','rd'][((bill.due_day+90)%100-10)%10-1]||'th'}</span>
+              <span class="due-day">
+                📅 Due on the {bill.due_day}{['st','nd','rd'][((bill.due_day+90)%100-10)%10-1]||'th'}
+              </span>
               
               <div class="bill-actions">
                 <button 
@@ -217,109 +238,17 @@
 <style>
   .add-btn {
     width: 100%;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-md);
   }
   
   .add-form {
-    margin-bottom: 1.5rem;
-  }
-  
-  .add-form h3 {
-    margin-top: 0;
+    margin-bottom: var(--space-lg);
   }
   
   .bills-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-  }
-  
-  .bill-card {
-    background-color: #1e293b;
-    border-radius: 0.75rem;
-    padding: 1rem;
-    border-left: 4px solid #3b82f6;
-  }
-  
-  .bill-card.inactive {
-    opacity: 0.6;
-    border-left-color: #64748b;
-  }
-  
-  .bill-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 0.75rem;
-  }
-  
-  .bill-title {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  
-  .bill-icon {
-    font-size: 1.5rem;
-  }
-  
-  .bill-title h4 {
-    margin: 0;
-    font-size: 1rem;
-  }
-  
-  .bill-category {
-    font-size: 0.8rem;
-    color: #94a3b8;
-  }
-  
-  .bill-amount {
-    font-size: 1.25rem;
-    font-weight: 700;
-    color: #ef4444;
-  }
-  
-  .bill-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 0.75rem;
-    border-top: 1px solid #334155;
-  }
-  
-  .due-day {
-    font-size: 0.875rem;
-    color: #94a3b8;
-  }
-  
-  .bill-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  
-  .toggle-btn {
-    background: none;
-    border: 1px solid #334155;
-    border-radius: 0.375rem;
-    padding: 0.375rem 0.75rem;
-    color: #94a3b8;
-    cursor: pointer;
-    font-size: 0.8rem;
-  }
-  
-  .toggle-btn.active {
-    border-color: #22c55e;
-    color: #22c55e;
-  }
-  
-  .delete-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.1rem;
-    padding: 0.25rem;
-    opacity: 0.7;
   }
   
   .delete-confirm {
@@ -329,8 +258,7 @@
     font-size: 0.875rem;
   }
   
-  .btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
+  .delete-confirm span {
+    color: var(--color-text-muted);
   }
 </style>
