@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { supabase } from '$lib/supabase';
   
@@ -9,13 +8,6 @@
   let password = '';
   let loading = false;
   let error = '';
-  
-  onMount(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      goto('/');
-    }
-  });
   
   async function handleLogin() {
     loading = true;
@@ -28,11 +20,10 @@
     
     if (authError) {
       error = authError.message;
+      loading = false;
     } else {
       goto('/');
     }
-    
-    loading = false;
   }
 </script>
 
