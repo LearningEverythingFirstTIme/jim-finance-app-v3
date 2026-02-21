@@ -113,7 +113,7 @@
               data: breakdown.map(b => b.total),
               backgroundColor: [
                 '#3b82f6', '#60a5fa', '#93c5fd', '#1d4ed8', '#1e40af',
-                '#10b981', '#34d399', '#f59e0b', '#f43f5e', '#8b5cf6'
+                '#2563eb', '#3b82f6', '#f59e0b', '#f43f5e', '#8b5cf6'
               ],
               borderWidth: 0,
               hoverOffset: 8
@@ -172,8 +172,8 @@
     if (barCtx) {
       // Create gradient for bars
       const incomeGradient = barCtx.createLinearGradient(0, 0, 0, 200);
-      incomeGradient.addColorStop(0, '#10b981');
-      incomeGradient.addColorStop(1, '#059669');
+      incomeGradient.addColorStop(0, '#3b82f6');
+      incomeGradient.addColorStop(1, '#1d4ed8');
       
       const expenseGradient = barCtx.createLinearGradient(0, 0, 0, 200);
       expenseGradient.addColorStop(0, '#f43f5e');

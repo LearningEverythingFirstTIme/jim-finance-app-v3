@@ -180,8 +180,8 @@
     {#if bills.length === 0}
       <div class="empty-state animate-fade-in">
         <div class="empty-state-icon">🔄</div>
-        <p>No recurring bills yet.</p>
-        <p style="color: var(--color-text-muted); font-size: 0.875rem;">Add your subscriptions and monthly bills to track them.</p>
+        <p>No recurring bills yet</p>
+        <p>Add your subscriptions and monthly bills to track them</p>
       </div>
     {:else}
       <div class="bills-list">

@@ -74,8 +74,8 @@
     if (barCtx) {
       // Create gradients
       const incomeGradient = barCtx.createLinearGradient(0, 0, 0, 300);
-      incomeGradient.addColorStop(0, '#10b981');
-      incomeGradient.addColorStop(1, '#059669');
+      incomeGradient.addColorStop(0, '#3b82f6');
+      incomeGradient.addColorStop(1, '#1d4ed8');
       
       const expenseGradient = barCtx.createLinearGradient(0, 0, 0, 300);
       expenseGradient.addColorStop(0, '#f43f5e');
